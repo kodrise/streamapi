@@ -326,7 +326,7 @@ async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
                     info['scraped_at'] = iso_now()
                     resultado[i].update(info)
                     stats['detalhe_ok'] += 1
-                    log(f'[2] {i+1}/{len(animes)} {str(info.get("titulo"))[:48]} ({len(info.get("episodios",[]))} eps)')
+                    log(f'[2] {i+1}/{len(animes)} {slug} | {str(info.get("titulo"))[:48]} ({len(info.get("episodios",[]))} eps)')
                     if _fb['on']:
                         try:
                             await asyncio.to_thread(fb_push_anime, resultado[i])
@@ -355,10 +355,10 @@ async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
                 d['scraped_at'] = iso_now()
                 if embed:
                     stats['embed_ok'] += 1
-                    log(f'[3] ok {str(ep.get("titulo"))[:30]} -> {str(embed)[:60]}')
+                    log(f'[3] ok {resultado[ai].get("id","?")} ep{ep.get("numero") or ei+1} -> {str(embed)[:60]}')
                 else:
                     stats['embed_sem'] += 1
-                    log(f'[3] SEM {str(ep.get("titulo"))[:30]}')
+                    log(f'[3] SEM {resultado[ai].get("id","?")} ep{ep.get("numero") or ei+1}')
                 if _fb['on']:
                     try:
                         await asyncio.to_thread(fb_push_ep, aid, d)
