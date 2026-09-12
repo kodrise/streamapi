@@ -78,6 +78,32 @@ def fb_ep_pronto(aid, eid):
     except Exception:
         return False
 
+def fb_mark_full_scan(total):
+    if not _fb['on']: return
+    try:
+        _fb['db'].collection('_meta').document('full_scan').set({
+            'done': True, 'total_animes': total, 'finished_at': iso_now(),
+            'updated_at': firestore.SERVER_TIMESTAMP
+        }, merge=True)
+    except Exception:
+        pass
+
+def fb_full_scan_done(threshold=500):
+    if not _fb['on']: return False
+    try:
+        doc = _fb['db'].collection('_meta').document('full_scan').get()
+        if doc.exists and (doc.to_dict() or {}).get('done'):
+            return True
+    except Exception:
+        pass
+    try:
+        count = 0
+        for _ in _fb['db'].collection('animes').limit(threshold + 1).stream():
+            count += 1
+        return count > threshold
+    except Exception:
+        return False
+
 # ============ HELPERS ============
 UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 
@@ -450,7 +476,21 @@ def main():
     ap.add_argument('--no-skip', action='store_true', help='desliga skip de itens ja existentes')
     ap.add_argument('--pages-limit', type=int, default=0, help='limita paginas por letra (0 = todas)')
     ap.add_argument('--mode', choices=['auto','full','home'], default='full', help='auto/full/home')
+    ap.add_argument('--home-url', default=None)
+    ap.add_argument('--mark-done', action='store_true')
     args = ap.parse_args()
+    if args.mark_done:
+        if not args.firebase_key:
+            print('precisa --firebase-key'); return
+        fb_init(args.firebase_key)
+        try:
+            n = len(list(_fb['db'].collection('animes').stream()))
+        except Exception:
+            n = 0
+        fb_mark_full_scan(n)
+        print(f'[+] varredura marcada como completa ({n} animes)')
+        return
+
     if args.mode == 'home':
         asyncio.run(pipeline_home(args.home_url or args.url, args.output,
                                   workers=args.workers_embed,
