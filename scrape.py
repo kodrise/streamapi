@@ -129,6 +129,7 @@ async def listar(ctx, base_url, max_pag=200, stop_after=0, pages_limit=0):
                 if stop_after and len(itens) >= stop_after: break
             log(f'[1] letra={letra} pag={page}: +{novos} (total {len(itens)})')
             if novos == 0: break
+            if pages_limit and page >= pages_limit: break
             page += 1
     await pg.close()
     return itens[:stop_after] if stop_after else itens
