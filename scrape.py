@@ -90,7 +90,7 @@ def embed_token_id(u):
     return m.group(1) if m else None
 
 # ============ ESTAGIO 1: LISTAR ============
-async def listar(ctx, base_url, max_pag=200, stop_after=0):
+async def listar(ctx, base_url, max_pag=200, stop_after=0, pages_limit=0):
     base_clean = base_url.split('?')[0].rstrip('/')
     letras = ['0-9'] + [chr(c) for c in range(ord('a'), ord('z')+1)]
     vistos, itens = set(), []
@@ -270,7 +270,7 @@ async def capturar_embed(ctx, ep_url, timeout=25):
 
 # ============ PIPELINE: lote a lote ============
 async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
-                   stop_after=0, firebase_key=None, batch=100, skip_existing=True):
+                   stop_after=0, firebase_key=None, batch=100, skip_existing=True, pages_limit=0):
     if firebase_key:
         fb_init(firebase_key)
         log(f'[fb] ativado: {firebase_key}')
@@ -279,7 +279,7 @@ async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
         b = await p.chromium.launch(headless=True)
         ctx = await b.new_context(user_agent=UA, viewport={'width':1920,'height':1080}, locale='pt-BR')
 
-        animes = await listar(ctx, base_url, stop_after=stop_after)
+        animes = await listar(ctx, base_url, stop_after=stop_after, pages_limit=pages_limit)
         log(f'[=] {len(animes)} animes na fila')
 
         resultado = [{'url': a['url'], 'capa': a.get('capa')} for a in animes]
@@ -403,6 +403,7 @@ def main():
     ap.add_argument('--firebase-key', default=None)
     ap.add_argument('--batch', type=int, default=100, help='tamanho do lote (padrao 100)')
     ap.add_argument('--no-skip', action='store_true', help='desliga skip de itens ja existentes')
+    ap.add_argument('--pages-limit', type=int, default=0, help='limita paginas por letra (0 = todas)')
     args = ap.parse_args()
     asyncio.run(pipeline(args.url, args.output,
                          workers_detail=args.workers_detail,
@@ -410,7 +411,8 @@ def main():
                          stop_after=args.stop_after,
                          firebase_key=args.firebase_key,
                          batch=args.batch,
-                         skip_existing=not args.no_skip))
+                         skip_existing=not args.no_skip,
+                         pages_limit=args.pages_limit))
 
 if __name__ == '__main__':
     main()
