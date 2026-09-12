@@ -269,6 +269,33 @@ async def capturar_embed(ctx, ep_url, timeout=25):
             embed, tipo = u, 'iframe'
     return embed, tipo
 
+
+async def validar_token_blogger(ctx, embed_url, timeout=20):
+    if not embed_url or 'blogger.com' not in embed_url:
+        return None
+    pg = await ctx.new_page()
+    achou = {'ok': False}
+    async def on_resp(r):
+        if 'googlevideo.com/videoplayback' in r.url:
+            achou['ok'] = True
+        if 'batchexecute' in r.url:
+            try:
+                if 'googlevideo' in await r.text():
+                    achou['ok'] = True
+            except Exception:
+                pass
+    pg.on('response', on_resp)
+    try:
+        await pg.goto(embed_url, wait_until='domcontentloaded', timeout=timeout*1000)
+        for _ in range(timeout):
+            if achou['ok']: break
+            await pg.wait_for_timeout(1000)
+    except Exception:
+        pass
+    finally:
+        await pg.close()
+    return achou['ok']
+
 # ============ PIPELINE: lote a lote ============
 async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
                    stop_after=0, firebase_key=None, batch=100, skip_existing=True, pages_limit=0):
@@ -280,7 +307,12 @@ async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
         b = await p.chromium.launch(headless=True)
         ctx = await b.new_context(user_agent=UA, viewport={'width':1920,'height':1080}, locale='pt-BR')
 
-        animes = await listar(ctx, base_url, stop_after=stop_after, pages_limit=pages_limit)
+        # se for URL de anime especifico, pula o estagio 1
+        if re.search(r'/anime/[^/]+/?$', base_url):
+            log(f'[1] URL de anime especifico, pulando listagem')
+            animes = [{'url': base_url, 'capa': None}]
+        else:
+            animes = await listar(ctx, base_url, stop_after=stop_after, pages_limit=pages_limit)
         log(f'[=] {len(animes)} animes na fila')
 
         resultado = [{'url': a['url'], 'capa': a.get('capa')} for a in animes]
@@ -297,7 +329,7 @@ async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
         sem2 = asyncio.Semaphore(workers_detail)
         sem3 = asyncio.Semaphore(workers_embed)
         stats = {'detalhe_skip': 0, 'detalhe_ok': 0, 'detalhe_erro': 0,
-                 'embed_ok': 0, 'embed_skip': 0, 'embed_sem': 0}
+                 'embed_ok': 0, 'embed_skip': 0, 'embed_sem': 0, 'embed_dead': 0}
 
         async def detalhe(i, item):
             async with sem2:
@@ -354,9 +386,21 @@ async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
                 d['id'] = eid
                 d['scraped_at'] = iso_now()
                 if embed:
-                    stats['embed_ok'] += 1
-                    log(f'[3] ok {resultado[ai].get("id","?")} ep{ep.get("numero") or ei+1} -> {str(embed)[:60]}')
+                    vivo = await validar_token_blogger(ctx, embed)
+                    if vivo is True:
+                        d['status'] = 'alive'
+                        stats['embed_ok'] += 1
+                        log(f'[3] ok {resultado[ai].get("id","?")} ep{ep.get("numero") or ei+1} -> {str(embed)[:50]}')
+                    elif vivo is False:
+                        d['status'] = 'dead'
+                        stats['embed_dead'] += 1
+                        log(f'[3] DEAD {resultado[ai].get("id","?")} ep{ep.get("numero") or ei+1}')
+                    else:
+                        d['status'] = 'unknown'
+                        stats['embed_ok'] += 1
+                        log(f'[3] ok {resultado[ai].get("id","?")} ep{ep.get("numero") or ei+1} ({tipo})')
                 else:
+                    d['status'] = 'no_embed'
                     stats['embed_sem'] += 1
                     log(f'[3] SEM {resultado[ai].get("id","?")} ep{ep.get("numero") or ei+1}')
                 if _fb['on']:
@@ -405,15 +449,22 @@ def main():
     ap.add_argument('--batch', type=int, default=100, help='tamanho do lote (padrao 100)')
     ap.add_argument('--no-skip', action='store_true', help='desliga skip de itens ja existentes')
     ap.add_argument('--pages-limit', type=int, default=0, help='limita paginas por letra (0 = todas)')
+    ap.add_argument('--mode', choices=['auto','full','home'], default='full', help='auto/full/home')
     args = ap.parse_args()
-    asyncio.run(pipeline(args.url, args.output,
-                         workers_detail=args.workers_detail,
-                         workers_embed=args.workers_embed,
-                         stop_after=args.stop_after,
-                         firebase_key=args.firebase_key,
-                         batch=args.batch,
-                         skip_existing=not args.no_skip,
-                         pages_limit=args.pages_limit))
+    if args.mode == 'home':
+        asyncio.run(pipeline_home(args.home_url or args.url, args.output,
+                                  workers=args.workers_embed,
+                                  firebase_key=args.firebase_key,
+                                  skip_existing=not args.no_skip))
+    else:
+        asyncio.run(pipeline(args.url, args.output,
+                             workers_detail=args.workers_detail,
+                             workers_embed=args.workers_embed,
+                             stop_after=args.stop_after,
+                             firebase_key=args.firebase_key,
+                             batch=args.batch,
+                             skip_existing=not args.no_skip,
+                             pages_limit=args.pages_limit))
 
 if __name__ == '__main__':
     main()
