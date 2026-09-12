@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+firebase-admin
+playwright
+beautifulsoup4
+lxml
+httpx

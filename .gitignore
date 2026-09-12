@@ -1,0 +1,33 @@
+# credenciais
+serviceAccountKey*.json
+*-firebase-adminsdk-*.json
+
+# outputs
+*.jsonl
+*_full.json
+catalogo*.json
+dr_stone.json
+drstone.json
+teste*.json
+goyabu*.json
+
+# debug
+ep_page.html
+token_page.html
+*.log
+
+# firebase local
+.firebase/
+.firebaserc
+firebase.json
+firestore.rules
+firestore.indexes.json
+
+# python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# SO
+.DS_Store
