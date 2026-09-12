@@ -104,6 +104,15 @@ def fb_full_scan_done(threshold=500):
     except Exception:
         return False
 
+
+def _json_default(o):
+    if hasattr(o, 'isoformat'):
+        return o.isoformat()
+    if hasattr(o, 'to_dict'):
+        try: return o.to_dict()
+        except Exception: pass
+    return str(o)
+
 # ============ HELPERS ============
 UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 
@@ -350,7 +359,7 @@ async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
                 'animes': resultado
             }
             with open(out_path, 'w', encoding='utf-8') as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
+                json.dump(payload, f, ensure_ascii=False, indent=2, default=_json_default)
 
         sem2 = asyncio.Semaphore(workers_detail)
         sem3 = asyncio.Semaphore(workers_embed)
