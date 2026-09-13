@@ -177,7 +177,7 @@ async def pipeline(base_url, out_path, firebase_key=None, skip_existing=True,
                     d['status']='no_embed'; stats['e_sem']+=1
                     log(f'[3] SEM {aid} ep{ep.get("numero")}')
                 if fb_enabled():
-                    try: await asyncio.to_thread(fb_push_ep, aid, d)
+                    try: await asyncio.to_thread(fb_push_ep, aid, d, 'animesorion.cc')
                     except Exception: pass
 
         async def processar_lote(idx, lote):

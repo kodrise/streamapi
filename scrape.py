@@ -38,11 +38,32 @@ def fb_push_anime(anime):
         ref.collection('episodes').document(eid).set(d, merge=True)
     return True, aid
 
-def fb_push_ep(anime_id, ep):
+def fb_push_ep(anime_id, ep, source=None):
     if not _fb['on']: return False, 'off'
     if not anime_id: return False, 'sem anime_id'
     eid = ep.get('id') or f"ep-{ep.get('numero') or 0:03d}"
     d = dict(ep); d['updated_at'] = firestore.SERVER_TIMESTAMP
+    # grava o embed dentro de sources.<netloc> pra nao sobrescrever outra fonte
+    if source and d.get('embed_url'):
+        safe = source.replace('.', '_')
+        entry = {
+            'url': d.get('url'),
+            'embed_url': d.get('embed_url'),
+            'embed_id': d.get('embed_id'),
+            'embed_type': d.get('embed_type'),
+            'status': d.get('status'),
+        }
+        d[f'sources.{safe}'] = entry
+        # sources[] (lista de fontes que ja contribuiram)
+        try:
+            doc = _fb['db'].collection('animes').document(anime_id).get()
+            fontes = list((doc.to_dict() or {}).get('sources') or [])
+            if source not in fontes:
+                fontes.append(source)
+                _fb['db'].collection('animes').document(anime_id).set(
+                    {'sources': fontes, 'updated_at': firestore.SERVER_TIMESTAMP}, merge=True)
+        except Exception:
+            pass
     _fb['db'].collection('animes').document(anime_id).collection('episodes').document(eid).set(d, merge=True)
     return True, eid
 
@@ -112,6 +133,18 @@ def _json_default(o):
         try: return o.to_dict()
         except Exception: pass
     return str(o)
+
+
+def fb_source_done(aid, source):
+    """True se a fonte ja contribuiu pro anime (esta em sources[])."""
+    if not _fb['on'] or not aid or not source: return False
+    try:
+        doc = _fb['db'].collection('animes').document(aid).get()
+        if not doc.exists: return False
+        d = doc.to_dict() or {}
+        return source in (d.get('sources') or [])
+    except Exception:
+        return False
 
 # ============ HELPERS ============
 UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
@@ -369,9 +402,10 @@ async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
         async def detalhe(i, item):
             async with sem2:
                 slug = urlparse(item['url']).path.strip('/').split('/')[-1]
-                if skip_existing and fb_anime_pronto(slug):
+                fonte = urlparse(item['url']).netloc
+                if skip_existing and fb_anime_pronto(slug) and fb_source_done(slug, fonte):
                     stats['detalhe_skip'] += 1
-                    log(f'[2] {i+1}/{len(animes)} SKIP {slug}')
+                    log(f'[2] {i+1}/{len(animes)} SKIP {slug} (fonte {fonte} ja ok)')
                     resultado[i]['id'] = slug; resultado[i]['slug'] = slug
                     resultado[i]['_skipped'] = True
                     try:
@@ -408,6 +442,7 @@ async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
 
         async def embed_ep(ai, ei, ep):
             async with sem3:
+                fonte = urlparse(resultado[ai].get('url') or '').netloc
                 aid = resultado[ai].get('id') or resultado[ai].get('slug')
                 eid = f"ep-{(ep.get('numero') or (ei+1)):03d}"
                 if skip_existing and fb_ep_pronto(aid, eid):
@@ -430,7 +465,7 @@ async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
                     log(f'[3] SEM {resultado[ai].get("id","?")} ep{ep.get("numero") or ei+1}')
                 if _fb['on']:
                     try:
-                        await asyncio.to_thread(fb_push_ep, aid, d)
+                        await asyncio.to_thread(fb_push_ep, aid, d, fonte)
                     except Exception as e:
                         log(f'      [fb] erro ep: {e}')
 
