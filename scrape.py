@@ -218,20 +218,39 @@ def extrair_detalhes(html, url, capa_listagem=None):
         meta = soup.find('meta', property='og:description') or soup.find('meta', attrs={'name':'description'})
         if meta: out['sinopse'] = meta.get('content','').strip()
 
-    for sel in ['[itemprop="datePublished"]', '.year', '.ano', '.release-year', '.data-ano']:
+    # ano — restringe a 1990-2029 e prioriza proximidade com o titulo
+    candidatos = []
+    for sel in ['[itemprop="datePublished"]', '.year', '.ano', '.release-year', '.data-ano', '.lancamento']:
         el = soup.select_one(sel)
         if el:
-            m = re.search(r'\b(19[5-9]\d|20[0-3]\d)\b', el.get_text())
-            if m: out['ano'] = int(m.group(0)); break
-    if not out['ano']:
-        for m in re.finditer(r'\b(19[5-9]\d|20[0-3]\d)\b', soup.get_text()):
-            out['ano'] = int(m.group(0)); break
+            for m in re.finditer(r'\b(19[89]\d|20[0-2]\d)\b', el.get_text()):
+                candidatos.append(int(m.group(0)))
+    if not candidatos:
+        # fallback: procura por "Lançado em <mes> <ano>" ou "Ano: 2024"
+        txt = soup.get_text()
+        m = re.search(r'(?:Lan[çc]ado em|Ano|Estreia)\D{0,20}(20[0-2]\d|19[89]\d)', txt)
+        if m: candidatos.append(int(m.group(1)))
+    if candidatos:
+        out['ano'] = max(candidatos)  # o mais recente eh o mais provavel
 
-    for sel in ['.rating-poster', '.rating', '.nota', '[itemprop="ratingValue"]', '.score']:
+    # nota — mais seletores + valida 0-10
+    for sel in ['.rating-poster', '.rating', '.nota', '[itemprop="ratingValue"]', '.score',
+                '.dt_rating', '.rating-score', '.rating-score-box', '.starstruck-rating',
+                '.average', '.vote-average', '.imdb', '.nota-anime', '.post-ratings']:
         el = soup.select_one(sel)
         if el:
-            m = re.search(r'\d+(?:\.\d+)?', el.get_text())
-            if m: out['nota'] = float(m.group(0)); break
+            txt = el.get_text() + ' ' + (el.get('content') or '')
+            m = re.search(r'(\d+(?:\.\d+)?)', txt)
+            if m:
+                v = float(m.group(1))
+                if 0 < v <= 10:
+                    out['nota'] = v; break
+    if not out['nota']:
+        # ultimo recurso: busca "Nota: X.X" ou "Rating: X.X" no HTML
+        m = re.search(r'(?:Nota|Rating|Score)[:\s]+(\d+(?:\.\d+)?)', soup.get_text(), re.I)
+        if m:
+            v = float(m.group(1))
+            if 0 < v <= 10: out['nota'] = v
 
     for sel in ['.status', '.estado', '.situacao']:
         el = soup.select_one(sel)
@@ -292,6 +311,8 @@ def extrair_detalhes(html, url, capa_listagem=None):
         m_ep = re.search(r'/(?:episodio|ep|epi)[-/]?(\d+)', href, re.I)
         if not (m_id or m_ep): continue
         if re.search(r'/(anime|genero|lista|perfil|login|calendario|random|populares|lancamentos|wp-|page)/', href): continue
+        # heuristica extra: ignora links de share/social (facebook, twitter, whatsapp, telegram)
+        if any(s in href for s in ['facebook.com', 'twitter.com', 'whatsapp', 't.me/', 'sharer']): continue
         ep_url = urljoin(url, href)
         if ep_url in vistos or ep_url == url: continue
         vistos.add(ep_url)
