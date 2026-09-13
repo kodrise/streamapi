@@ -238,9 +238,52 @@ def extrair_detalhes(html, url, capa_listagem=None):
         if el and el.get_text(strip=True):
             out['status'] = el.get_text(strip=True); break
 
-    for a in soup.select('a[href*="/genero/"], a[href*="/generos/"], .genres a, .sgeneros a, .generos a'):
+    # generos — Goyabu usa /generos/{slug} (plural)
+    for a in soup.select('a[href*="/generos/"], a[href*="/genero/"], .genres a, .sgeneros a, .generos a'):
         g = a.get_text(strip=True)
-        if g and g not in out['generos'] and len(g) < 40: out['generos'].append(g)
+        href = a.get('href', '')
+        # ignora o link "Categorias" (raiz /generos sem slug)
+        if re.search(r'/generos?/?$', href): continue
+        if g and g not in out['generos'] and len(g) < 40:
+            out['generos'].append(g)
+            # guarda o slug tambem
+            m = re.search(r'/generos?/([^/]+)/?', href)
+            if m:
+                out.setdefault('generos_slugs', {})[g] = m.group(1)
+
+    # tipo — Goyabu nao expoe; usa heuristica
+    for sel in ['.typez', '.ep-type b']:
+        el = soup.select_one(sel)
+        if el:
+            t = el.get_text(strip=True).upper()
+            if t in ('TV', 'FILME', 'MOVIE', 'OVA', 'ONA', 'ESPECIAL', 'SPECIAL'):
+                out['tipo'] = t.capitalize()
+                break
+    if not out.get('tipo'):
+        titulo = (out.get('titulo') or '').lower()
+        if any(x in titulo for x in [' filme', ' movie']):
+            out['tipo'] = 'Filme'
+        elif ' ova' in titulo:
+            out['tipo'] = 'OVA'
+        elif ' ona' in titulo:
+            out['tipo'] = 'ONA'
+        else:
+            out['tipo'] = 'TV'
+
+    # audio — seletor real do Goyabu: .audio-box.legendado / .audio-box.dublado
+    audio = []
+    for a_box in soup.select('.audio-box'):
+        classes = ' '.join(a_box.get('class') or []).lower()
+        if 'dublado' in classes and 'dublado' not in audio:
+            audio.append('dublado')
+        if 'legendado' in classes and 'legendado' not in audio:
+            audio.append('legendado')
+    titulo_l = (out.get('titulo') or '').lower()
+    if 'dublado' in titulo_l and 'dublado' not in audio:
+        audio.append('dublado')
+    if not audio:
+        audio.append('legendado')
+    out['audio'] = audio
 
     vistos = set()
     for a in soup.find_all('a', href=True):

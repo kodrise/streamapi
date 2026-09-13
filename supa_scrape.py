@@ -109,7 +109,7 @@ def sb_add_source(anime_id, source):
         pass
 
 async def pipeline(base_url, batch=100, pages_limit=0,
-                   workers_detail=3, workers_embed=3, skip_existing=True):
+                   workers_detail=6, workers_embed=6, skip_existing=True):
     """Pipeline completo: lista -> detalhes -> embeds -> Supabase."""
     async with async_playwright() as p:
         b = await p.chromium.launch(headless=True)
@@ -186,8 +186,7 @@ async def pipeline(base_url, batch=100, pages_limit=0,
                 d['scraped_at'] = iso_now()
 
                 if embed:
-                    vivo = await validar_token_blogger(ctx, embed)
-                    d['status'] = 'alive' if vivo is True else ('dead' if vivo is False else 'unknown')
+                    d['status'] = 'unknown'
                 else:
                     d['status'] = 'no_embed'
 
@@ -269,8 +268,8 @@ def main():
     ap.add_argument('url', nargs='?', default='https://goyabu.io/lista-de-animes')
     ap.add_argument('--batch', type=int, default=100)
     ap.add_argument('--pages-limit', type=int, default=0)
-    ap.add_argument('--workers-detail', type=int, default=3)
-    ap.add_argument('--workers-embed', type=int, default=3)
+    ap.add_argument('--workers-detail', type=int, default=6)
+    ap.add_argument('--workers-embed', type=int, default=6)
     ap.add_argument('--no-skip', action='store_true')
     args = ap.parse_args()
     asyncio.run(pipeline(args.url, batch=args.batch, pages_limit=args.pages_limit,
