@@ -421,19 +421,9 @@ async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
                 d['id'] = eid
                 d['scraped_at'] = iso_now()
                 if embed:
-                    vivo = await validar_token_blogger(ctx, embed)
-                    if vivo is True:
-                        d['status'] = 'alive'
-                        stats['embed_ok'] += 1
-                        log(f'[3] ok {resultado[ai].get("id","?")} ep{ep.get("numero") or ei+1} -> {str(embed)[:50]}')
-                    elif vivo is False:
-                        d['status'] = 'dead'
-                        stats['embed_dead'] += 1
-                        log(f'[3] DEAD {resultado[ai].get("id","?")} ep{ep.get("numero") or ei+1}')
-                    else:
-                        d['status'] = 'unknown'
-                        stats['embed_ok'] += 1
-                        log(f'[3] ok {resultado[ai].get("id","?")} ep{ep.get("numero") or ei+1} ({tipo})')
+                    d['status'] = 'unknown'
+                    stats['embed_ok'] += 1
+                    log(f'[3] ok {resultado[ai].get("id","?")} ep{ep.get("numero") or ei+1} -> {str(embed)[:50]}')
                 else:
                     d['status'] = 'no_embed'
                     stats['embed_sem'] += 1
