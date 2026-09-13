@@ -10,7 +10,7 @@ from playwright.async_api import async_playwright
 from scrape import (
     _json_default,
     fb_init, fb_push_anime, fb_push_ep, fb_push_meta,
-    fb_anime_pronto, fb_ep_pronto, fb_mark_full_scan, fb_full_scan_done,
+    fb_anime_pronto, fb_ep_pronto, fb_source_done, fb_mark_full_scan, fb_full_scan_done,
     iso_now, embed_token_id, capturar_embed, validar_token_blogger, UA, log,
 )
 
@@ -124,7 +124,8 @@ async def pipeline(base_url, out_path, firebase_key=None, skip_existing=True,
         async def detalhe(i, item):
             async with sem2:
                 slug = urlparse(item['url']).path.strip('/').split('/')[-1]
-                if skip_existing and fb_anime_pronto(slug):
+                fonte = 'animesorion.cc'
+                if skip_existing and fb_anime_pronto(slug) and fb_source_done(slug, fonte):
                     stats['d_skip'] += 1
                     log(f'[2] {i+1}/{len(animes)} SKIP {slug}')
                     resultado[i]['id'] = slug; resultado[i]['slug'] = slug
@@ -155,7 +156,7 @@ async def pipeline(base_url, out_path, firebase_key=None, skip_existing=True,
             async with sem3:
                 aid = resultado[ai].get('id')
                 eid = f"ep-{(ep.get('numero') or (ei+1)):03d}"
-                if skip_existing and fb_ep_pronto(aid, eid):
+                if skip_existing and fb_ep_pronto(aid, eid) and fb_source_done(aid, 'animesorion.cc'):
                     stats['e_skip'] += 1; return
                 embed, tipo = await capturar_embed(ctx, ep['url'])
                 d = resultado[ai]['episodios'][ei]
