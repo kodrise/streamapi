@@ -1,0 +1,37 @@
+name: supa-full
+
+on:
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: instala deps
+        run: |
+          pip install -r requirements.txt python-dotenv supabase
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: cria .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
+
+      - name: roda scrape -> supabase
+        run: |
+          python supa_scrape.py "https://goyabu.io/lista-de-animes" \
+            --pages-limit 0 \
+            --batch 100
+
+      - name: limpa .env
+        if: always()
+        run: rm -f .env
