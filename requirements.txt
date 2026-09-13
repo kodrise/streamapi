@@ -1,7 +1,7 @@
-fastapi
-uvicorn[standard]
-firebase-admin
-playwright
-beautifulsoup4
-lxml
-httpx
+fastapi==0.115.6
+supabase>=2.13.0
+postgrest==0.19.3
+gotrue==2.11.0
+realtime==2.1.0
+storage3==0.10.0
+httpx==0.27.2
