@@ -3,7 +3,7 @@
 # scraper + Firestore em lotes, num arquivo so
 # uso: python scrape.py "https://goyabu.io/lista-de-animes" -o catalogo.json --firebase-key serviceAccountKey.json
 
-import asyncio, json, re, sys, argparse, os
+import asyncio, json, re, sys, argparse, os, time
 from urllib.parse import urljoin, urlparse
 from datetime import datetime, timezone
 from bs4 import BeautifulSoup
@@ -23,6 +23,7 @@ def fb_init(key_path):
     return _fb['db']
 
 def fb_push_anime(anime):
+    """1 write por anime — eps em array dentro do doc pai."""
     if not _fb['on']: return False, 'off'
     aid = anime.get('id') or anime.get('slug')
     if not aid: return False, 'sem id'
@@ -30,42 +31,22 @@ def fb_push_anime(anime):
     ref = _fb['db'].collection('animes').document(aid)
     doc = {k: v for k, v in anime.items() if k not in ('episodios', 'episodes')}
     doc['episodes_count'] = len(eps)
+    # eps embutidos como array no doc pai
+    eps_limpos = []
+    for ep in eps:
+        e = dict(ep)
+        e['id'] = e.get('id') or f"ep-{e.get('numero') or 0:03d}"
+        eps_limpos.append(e)
+    doc['episodes'] = eps_limpos
     doc['updated_at'] = firestore.SERVER_TIMESTAMP
     ref.set(doc, merge=True)
-    for ep in eps:
-        eid = ep.get('id') or f"ep-{ep.get('numero') or 0:03d}"
-        d = dict(ep); d['updated_at'] = firestore.SERVER_TIMESTAMP
-        ref.collection('episodes').document(eid).set(d, merge=True)
     return True, aid
 
 def fb_push_ep(anime_id, ep, source=None):
+    """No-op — economiza writes. O estagio 3 usa fb_push_anime."""
     if not _fb['on']: return False, 'off'
-    if not anime_id: return False, 'sem anime_id'
-    eid = ep.get('id') or f"ep-{ep.get('numero') or 0:03d}"
-    d = dict(ep); d['updated_at'] = firestore.SERVER_TIMESTAMP
-    # grava o embed dentro de sources.<netloc> pra nao sobrescrever outra fonte
-    if source and d.get('embed_url'):
-        safe = source.replace('.', '_')
-        entry = {
-            'url': d.get('url'),
-            'embed_url': d.get('embed_url'),
-            'embed_id': d.get('embed_id'),
-            'embed_type': d.get('embed_type'),
-            'status': d.get('status'),
-        }
-        d[f'sources.{safe}'] = entry
-        # sources[] (lista de fontes que ja contribuiram)
-        try:
-            doc = _fb['db'].collection('animes').document(anime_id).get()
-            fontes = list((doc.to_dict() or {}).get('sources') or [])
-            if source not in fontes:
-                fontes.append(source)
-                _fb['db'].collection('animes').document(anime_id).set(
-                    {'sources': fontes, 'updated_at': firestore.SERVER_TIMESTAMP}, merge=True)
-        except Exception:
-            pass
-    _fb['db'].collection('animes').document(anime_id).collection('episodes').document(eid).set(d, merge=True)
-    return True, eid
+    return True, ep.get('id') or '?'
+
 
 def fb_push_meta(meta):
     if not _fb['on']: return
@@ -465,7 +446,7 @@ async def pipeline(base_url, out_path, workers_detail=3, workers_embed=3,
                     log(f'[3] SEM {resultado[ai].get("id","?")} ep{ep.get("numero") or ei+1}')
                 if _fb['on']:
                     try:
-                        await asyncio.to_thread(fb_push_ep, aid, d, fonte)
+                        await asyncio.to_thread(fb_push_anime, resultado[ai])
                     except Exception as e:
                         log(f'      [fb] erro ep: {e}')
 
