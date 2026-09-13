@@ -209,6 +209,42 @@ def extrair_detalhes(html, url, capa_listagem=None):
         meta = soup.find('meta', property='og:image')
         if meta: out['capa'] = meta.get('content')
 
+    # sinopse — .sinopse-full tem o texto completo (o _short e truncado)
+    el = soup.select_one('.sinopse-full') or soup.select_one('.streamer-sinopse')
+    if el:
+        txt = el.get_text(' ', strip=True)
+        titulo = out.get('titulo') or ''
+        # remove SEO boilerplate
+        patterns = [
+            r'\b' + re.escape(titulo) + r'\s+Todos os Epis[oó]dios? Onl[^.?!]*[.?!]',
+            r'\b' + re.escape(titulo) + r'\s+Anime Completo[,.]',
+            r'\bAssistir\s+' + re.escape(titulo) + r'[^.?!]*[.?!]',
+            r'Todos os Epis[oó]dios? Onl[^.?!]*[.?!]',
+            r'Assistir [^.!?]{0,150}?(?:Completo|Online|Dublado|Legendado)[^.!?]*[.!?]',
+            r'[^.?!]{0,200}?Todos os Epis[oó]dios? Onl[^.?!]*\.?',
+            r'\s*ler mais\s*$',
+        ]
+        for p in patterns:
+            txt = re.sub(p, ' ', txt, flags=re.I)
+
+        # corte generico: se ainda tem boilerplate no inicio, corta ate o 1o "."
+        while True:
+            m = re.match(r'^[^.]{0,200}?(?:Anime Completo|Assistir|Online\.|Completo,)', txt, re.I)
+            if not m:
+                break
+            # acha o primeiro ponto-e-espaco depois do boilerplate
+            m2 = re.search(r'\.\s+', txt[m.end():])
+            if not m2:
+                break
+            txt = txt[m.end() + m2.end():]
+            break
+
+        txt = re.sub(r'\s+', ' ', txt).strip()
+        txt = re.sub(r'^[.,;:\-\s]+', '', txt)
+        txt = re.sub(r'[.,;:\-\s]+$', '', txt)
+        if len(txt) > 40:
+            out['sinopse'] = txt
+
     for sel in ['.description', '.sinopse', '.wp-content p', '.info .desc', '.desc']:
         el = soup.select_one(sel)
         if el:
@@ -231,7 +267,20 @@ def extrair_detalhes(html, url, capa_listagem=None):
         m = re.search(r'(?:Lan[çc]ado em|Ano|Estreia)\D{0,20}(20[0-2]\d|19[89]\d)', txt)
         if m: candidatos.append(int(m.group(1)))
     if candidatos:
-        out['ano'] = max(candidatos)  # o mais recente eh o mais provavel
+        out['ano'] = max(candidatos)
+
+    # OVERRIDE: .streamer-info tem ano e nota reais do Goyabu
+    info_el = soup.select_one('.streamer-info')
+    if info_el:
+        info_txt = info_el.get_text(' ', strip=True)
+        m_ano = re.search(r'HD\s+(19[89]\d|20[0-2]\d)', info_txt)
+        if m_ano:
+            out['ano'] = int(m_ano.group(1))
+        m_nota = re.search(r'(\d+\.\d+)\s+\d*\s*votos', info_txt)
+        if m_nota:
+            v = float(m_nota.group(1))
+            if 0 < v <= 10:
+                out['nota'] = v  # o mais recente eh o mais provavel
 
     # nota — mais seletores + valida 0-10
     for sel in ['.rating-poster', '.rating', '.nota', '[itemprop="ratingValue"]', '.score',
