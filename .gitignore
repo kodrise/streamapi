@@ -31,3 +31,4 @@ venv/
 
 # SO
 .DS_Store
+.env
