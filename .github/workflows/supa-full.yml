@@ -17,8 +17,9 @@ jobs:
 
       - name: instala deps
         run: |
-          pip install -r requirements.txt python-dotenv supabase
+                    pip install -r requirements-scraper.txt
           playwright install chromium
+          playwright install-deps chromium
           playwright install-deps chromium
 
       - name: cria .env

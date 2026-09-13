@@ -1,0 +1,6 @@
+supabase>=2.13.0
+python-dotenv
+playwright
+beautifulsoup4
+lxml
+httpx
