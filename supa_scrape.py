@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # language: Python, file: supa_scrape.py
 # pipeline de scraping gravando direto no Supabase
-import asyncio, json, os, re, sys, argparse
+import asyncio, json, os, re, sys, argparse, time
 from urllib.parse import urlparse
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -42,6 +42,8 @@ def sb_push_anime(anime):
         'nota': anime.get('nota'),
         'status': anime.get('status'),
         'generos': anime.get('generos') or [],
+        'tipo': anime.get('tipo'),
+        'audio': anime.get('audio') or [],
         'sources': anime.get('sources') or ([anime['source']] if anime.get('source') else []),
         'episodes_count': anime.get('episodes_count') or len(anime.get('episodios', [])),
         'scraped_at': anime.get('scraped_at') or iso_now(),
@@ -210,8 +212,9 @@ async def pipeline(base_url, batch=100, pages_limit=0,
             except Exception:
                 pass
 
-        async def processar_lote(idx, lote):
-            log(f'\n[===] LOTE {idx} ({len(lote)}) ===')
+        async def processar_lote(idx, lote, total=None):
+            tot = f'/{total}' if total else ''
+            log(f'\n[===] LOTE {idx}{tot} ({len(lote)}) ===')
             await asyncio.gather(*(detalhe(i, it) for i, it in lote))
             tarefas = []
             for i, _ in lote:
@@ -221,15 +224,40 @@ async def pipeline(base_url, batch=100, pages_limit=0,
                 await asyncio.gather(*tarefas[k:k+workers_embed*2])
             for i, _ in lote:
                 await atualiza_count(i)
-            log(f'[===] LOTE {idx} pronto | {stats}')
+            log(f'[===] LOTE {idx}{tot} pronto | {stats}')
 
         pares = list(enumerate(resultado))
         tam = batch or len(pares)
-        for idx in range((len(pares)+tam-1)//tam):
+        total_lotes = (len(pares)+tam-1)//tam
+        prog = {'processados': 0, 'inicio': time.time()}
+
+        log(f'\n[===] PROCESSANDO {len(pares)} ANIMES EM {total_lotes} LOTES DE {tam} ===')
+
+        for idx in range(total_lotes):
+            lote = pares[idx*tam:(idx+1)*tam]
+            t0 = time.time()
             try:
-                await processar_lote(idx+1, pares[idx*tam:(idx+1)*tam])
+                await processar_lote(idx+1, lote, total=total_lotes)
+                prog['processados'] += len(lote)
+                dur_lote = time.time() - t0
+                dur_total = time.time() - prog['inicio']
+                faltam = len(pares) - prog['processados']
+                if prog['processados'] > 0:
+                    eta_seg = (dur_total / prog['processados']) * faltam
+                    eta_txt = f'{eta_seg/60:.0f}min' if eta_seg < 3600 else f'{eta_seg/3600:.1f}h'
+                else:
+                    eta_txt = '?'
+                log(
+                    f'[===] LOTE {idx+1}/{total_lotes} OK '
+                    f'| processados: {prog["processados"]}/{len(pares)} '
+                    f'| faltam: {faltam} '
+                    f'| lote em {dur_lote:.0f}s '
+                    f'| total {dur_total/60:.0f}min '
+                    f'| ETA {eta_txt}'
+                )
             except Exception as e:
                 log(f'[!] lote {idx+1} falhou: {e} — continuando')
+                prog['processados'] += len(lote)
                 continue
 
         await b.close()
