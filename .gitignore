@@ -33,3 +33,10 @@ venv/
 .DS_Store
 .env
 .vercel
+
+# debug/testes
+test_*.py
+anidrive.html
+scrape.py.bak
+sni_scan.py
+supabase/
