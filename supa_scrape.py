@@ -157,6 +157,36 @@ def animes_pendentes_no_supabase(shard=0, of=1):
     return pendentes
 
 
+
+
+async def seed_animes(ctx, base_url, pages_limit=0):
+    """Lista os animes do site e grava cada slug no Supabase (sem processar).
+    Depois, --from-db processa em shards."""
+    animes = await listar(ctx, base_url, pages_limit=pages_limit)
+    log(f'[seed] {len(animes)} animes listados')
+
+    inseridos = 0
+    for a in animes:
+        slug = urlparse(a['url']).path.strip('/').split('/')[-1]
+        # se ja existe, pula
+        r = SB.table('animes').select('id').eq('slug', slug).limit(1).execute()
+        if r.data:
+            continue
+        SB.table('animes').insert({
+            'slug': slug,
+            'titulo': slug,
+            'capa': a.get('capa'),
+            'sources': [],
+            'episodes_count': 0,
+            'scraped_at': iso_now(),
+        }).execute()
+        inseridos += 1
+        if inseridos % 100 == 0:
+            log(f'  [seed] {inseridos} inseridos')
+    log(f'[seed] {inseridos} novos animes gravados')
+    return inseridos
+
+
 async def pipeline(base_url, batch=100, pages_limit=0,
                    workers_detail=10, workers_embed=10, skip_existing=True,
                    from_db=False, shard=0, of=1):
@@ -328,9 +358,20 @@ def main():
     ap.add_argument('--workers-embed', type=int, default=8)
     ap.add_argument('--no-skip', action='store_true')
     ap.add_argument('--from-db', action='store_true', help='le animes do Supabase, sem listar')
+    ap.add_argument('--seed', action='store_true', help='apenas lista e grava slugs')
     ap.add_argument('--shard', type=int, default=0)
     ap.add_argument('--of', type=int, default=1)
     args = ap.parse_args()
+    if args.seed:
+        async def _seed():
+            async with async_playwright() as p:
+                b = await p.chromium.launch(headless=True)
+                ctx = await b.new_context(user_agent=UA, viewport={'width':1920,'height':1080}, locale='pt-BR')
+                await seed_animes(ctx, args.url, pages_limit=args.pages_limit)
+                await b.close()
+        asyncio.run(_seed())
+        return
+
     asyncio.run(pipeline(args.url, batch=args.batch, pages_limit=args.pages_limit,
                          workers_detail=args.workers_detail, workers_embed=args.workers_embed,
                          skip_existing=not args.no_skip, from_db=args.from_db,
