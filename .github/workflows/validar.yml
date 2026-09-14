@@ -1,0 +1,49 @@
+name: validar
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Máximo de sources (0 = todos)'
+        default: '0'
+      only_unknown:
+        description: 'Só os sem status (true/false)'
+        default: 'true'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: instala deps
+        run: |
+          pip install -r requirements-scraper.txt
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: cria .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
+
+      - name: valida
+        run: |
+          LIMIT="${{ github.event.inputs.limit }}"
+          ONLY="${{ github.event.inputs.only_unknown }}"
+          if [ "$LIMIT" = "0" ] || [ -z "$LIMIT" ]; then
+            python validar_supa.py --workers 8 $([ "$ONLY" = "true" ] && echo "--only-unknown")
+          else
+            python validar_supa.py --limit $LIMIT --workers 8 $([ "$ONLY" = "true" ] && echo "--only-unknown")
+          fi
+
+      - name: limpa .env
+        if: always()
+        run: rm -f .env
