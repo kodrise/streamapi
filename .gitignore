@@ -40,3 +40,5 @@ anidrive.html
 scrape.py.bak
 sni_scan.py
 supabase/
+.env*
+*.bak
