@@ -47,16 +47,33 @@ async def main():
     ap.add_argument("--limit", type=int, default=0, help="max sources (0=todos)")
     ap.add_argument("--workers", type=int, default=5)
     ap.add_argument("--only-unknown", action="store_true", help="so os sem status")
+    ap.add_argument("--shard", type=int, default=0)
+    ap.add_argument("--of", type=int, default=1)
     args = ap.parse_args()
 
     log("[*] coletando sources...")
-    q = SB.table("episode_sources").select("id,embed_url,status").not_.is_("embed_url", "null")
-    if args.only_unknown:
-        q = q.or_("status.is.null,status.eq.unknown")
-    if args.limit:
-        q = q.limit(args.limit)
-    rows = q.execute().data or []
-    log(f"[*] {len(rows)} sources pra validar\n")
+    rows = []
+    offset = 0
+    page = 1000
+    while True:
+        q = SB.table("episode_sources").select("id,embed_url,status")\
+            .not_.is_("embed_url", "null")
+        if args.only_unknown:
+            q = q.or_("status.is.null,status.eq.unknown")
+        q = q.range(offset, offset + page - 1)
+        lote = q.execute().data or []
+        if not lote: break
+        rows.extend(lote)
+        if len(lote) < page: break
+        offset += page
+        if args.limit and len(rows) >= args.limit:
+            rows = rows[:args.limit]; break
+
+    # filtro de shard
+    if args.of > 1:
+        rows = [r for r in rows if (r["id"] % args.of) == args.shard]
+    if args.limit: rows = rows[:args.limit]
+    log(f"[*] {len(rows)} sources pra validar (shard {args.shard}/{args.of})\n")
 
     async with async_playwright() as p:
         b = await p.chromium.launch(headless=True, args=["--no-sandbox"])
