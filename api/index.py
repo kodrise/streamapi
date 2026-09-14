@@ -249,3 +249,34 @@ def stream(identificador: str, numero: int, source: Optional[str] = None):
 
     rows.sort(key=lambda r: 0 if r.get("status") == "alive" else 1)
     return RedirectResponse(rows[0]["embed_url"], status_code=302)
+
+# ============================================================
+# Embed — devolve o embed_url cru pro iframe usar direto
+# ============================================================
+@app.get("/embed/{identificador}/{numero}")
+@app.get("/api/embed/{identificador}/{numero}")
+def embed_raw(identificador: str, numero: int):
+    """Retorna o embed_url do Blogger pro iframe apontar direto."""
+    found = _buscar_anime(identificador)
+    if not found:
+        raise HTTPException(404, "anime nao encontrado")
+
+    ep = SB.table("episodes").select("id")\
+         .eq("anime_id", found["id"]).eq("numero", numero).limit(1).execute()
+    if not ep.data:
+        raise HTTPException(404, "episodio nao encontrado")
+
+    rows = SB.table("episode_sources").select("source,embed_url,status")\
+           .eq("episode_id", ep.data[0]["id"]).execute().data or []
+    rows = [r for r in rows if r.get("embed_url")]
+    if not rows:
+        raise HTTPException(404, "sem embed")
+    rows.sort(key=lambda r: 0 if r.get("status") == "alive" else 1)
+
+    return {
+        "slug": found["slug"],
+        "numero": numero,
+        "embed_url": rows[0]["embed_url"],
+        "source": rows[0]["source"],
+        "status": rows[0].get("status"),
+    }
