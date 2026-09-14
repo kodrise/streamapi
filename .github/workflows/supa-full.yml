@@ -29,9 +29,7 @@ jobs:
 
       - name: roda scrape -> supabase
         run: |
-                    python supa_scrape.py "https://goyabu.io/lista-de-animes" \
-            --from-db \
-            --batch 100
+          python supa_scrape.py "https://goyabu.io/lista-de-animes" --from-db --batch 100
 
       - name: limpa .env
         if: always()
