@@ -10,8 +10,16 @@ from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright
 
 # ============ FIREBASE INLINE ============
-import firebase_admin
-from firebase_admin import credentials, firestore
+# firebase-admin e opcional — so carrega se estiver instalado
+try:
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+    _FIREBASE_OK = True
+except ImportError:
+    firebase_admin = None
+    credentials = None
+    firestore = None
+    _FIREBASE_OK = False
 
 _fb = {'db': None, 'on': False}
 
