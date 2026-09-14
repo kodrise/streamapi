@@ -128,38 +128,44 @@ def sb_add_source(anime_id, source):
 
 
 def animes_pendentes_no_supabase(shard=0, of=1):
-    """Lê do Supabase os animes que precisam de processamento:
-    - sem sources (nunca processados nessa fonte)
-    - com episodes_count > 0 mas sem eps reais
-    Retorna lista de {url, capa} para o pipeline processar."""
-    # animes com sources vazio
-    r = SB.table('animes').select('id,slug,capa,sources,episodes_count,sem_eps').execute()
+    """Le do Supabase animes que precisam de processamento (paginado).
+    - sem sources (nunca processado) E sem_eps=false
+    - com sources mas 0 eps reais E sem_eps=false
+    """
     pendentes = []
-    for a in r.data:
-        precisa = False
-        # sem sources registradas
-        if not a.get('sources'):
-            precisa = True
-        else:
-            # tem sources mas sem eps reais
-            n = SB.table('episodes').select('id', count='exact').eq('anime_id', a['id']).execute().count
-            if n == 0:
+    offset = 0
+    page = 1000
+
+    while True:
+        r = SB.table('animes').select('id,slug,capa,sources,episodes_count,sem_eps')\
+            .range(offset, offset + page - 1).execute().data or []
+        if not r: break
+
+        for a in r:
+            if a.get('sem_eps'): continue
+
+            precisa = False
+            if not a.get('sources'):
                 precisa = True
-        # pula animes marcados como sem eps
-        if a.get('sem_eps'):
-            continue
-        if precisa:
-            # filtro de shard: 0=par, 1=impar, etc.
-            if (a['id'] % of) != shard:
-                continue
-            pendentes.append({
-                'url': f"https://goyabu.io/anime/{a['slug']}",
-                'capa': a.get('capa'),
-                '_pg_id': a['id'] if a.get('sources') else None,
-            })
+            else:
+                n = SB.table('episodes').select('id', count='exact')\
+                    .eq('anime_id', a['id']).execute().count
+                if n == 0:
+                    precisa = True
+
+            if precisa:
+                if (a['id'] % of) != shard:
+                    continue
+                pendentes.append({
+                    'url': f"https://goyabu.io/anime/{a['slug']}",
+                    'capa': a.get('capa'),
+                    '_pg_id': a['id'] if a.get('sources') else None,
+                })
+
+        if len(r) < page: break
+        offset += page
+
     return pendentes
-
-
 
 
 async def seed_animes(ctx, base_url, pages_limit=0):
