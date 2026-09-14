@@ -27,6 +27,8 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
+CACHE_HEADERS = {'Cache-Control': 'public, max-age=300, s-maxage=600, stale-while-revalidate=3600'}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -200,12 +202,15 @@ def anime_lite(identificador: str):
     eps = SB.table("episodes").select("numero,status")\
            .eq("anime_id", anime["id"]).order("numero").execute().data or []
 
-    return {
-        "id": anime["id"],
-        "slug": anime["slug"],
-        "titulo": anime["titulo"],
-        "episodios": [{"numero": e["numero"], "status": e.get("status") or "unknown"} for e in eps],
-    }
+    return JSONResponse(
+        content={
+            "id": anime["id"],
+            "slug": anime["slug"],
+            "titulo": anime["titulo"],
+            "episodios": [{"numero": e["numero"], "status": e.get("status") or "unknown"} for e in eps],
+        },
+        headers=CACHE_HEADERS,
+    )
 
 
 # ============================================================
@@ -299,10 +304,13 @@ def embed_raw(identificador: str, numero: int):
         raise HTTPException(404, "sem embed")
     rows.sort(key=lambda r: 0 if r.get("status") == "alive" else 1)
 
-    return {
-        "slug": found["slug"],
-        "numero": numero,
-        "embed_url": rows[0]["embed_url"],
-        "source": rows[0]["source"],
-        "status": rows[0].get("status"),
-    }
+    return JSONResponse(
+        content={
+            "slug": found["slug"],
+            "numero": numero,
+            "embed_url": rows[0]["embed_url"],
+            "source": rows[0]["source"],
+            "status": rows[0].get("status"),
+        },
+        headers=CACHE_HEADERS,
+    )
