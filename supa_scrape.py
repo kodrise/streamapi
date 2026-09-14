@@ -28,6 +28,23 @@ def sb_anime_existe(slug):
         return None
 
 
+
+
+def sb_anime_pronto(slug):
+    """Retorna o anime SE ele existe E tem eps reais. None se precisa processar."""
+    r = SB.table('animes').select('id,slug,sources,episodes_count').eq('slug', slug).limit(1).execute()
+    if not r.data:
+        return None
+    a = r.data[0]
+    if not a.get('episodes_count'):
+        return None
+    # checa se tem eps reais
+    n = SB.table('episodes').select('id', count='exact').eq('anime_id', a['id']).execute().count
+    if n == 0:
+        return None
+    return a
+
+
 def sb_push_anime(anime):
     """Upsert do anime pelo slug. Retorna o id."""
     slug = anime.get('id') or anime.get('slug')
@@ -132,10 +149,12 @@ async def pipeline(base_url, batch=100, pages_limit=0,
         async def detalhe(i, item):
             async with sem2:
                 slug = urlparse(item['url']).path.strip('/').split('/')[-1]
-                existente = sb_anime_existe(slug)
+                existente = sb_anime_pronto(slug)
                 if skip_existing and existente and fonte in (existente.get('sources') or []):
                     stats['d_skip'] += 1
                     log(f'[2] {i+1}/{len(animes)} SKIP {slug}')
+                    resultado[i]['id'] = slug
+                    resultado[i]['_pg_id'] = existente['id']
                     return
                 pg = await ctx.new_page()
                 try:
