@@ -158,7 +158,8 @@ def animes_pendentes_no_supabase(shard=0, of=1):
 
 
 async def pipeline(base_url, batch=100, pages_limit=0,
-                   workers_detail=8, workers_embed=8, skip_existing=True):
+                   workers_detail=10, workers_embed=10, skip_existing=True,
+                   from_db=False, shard=0, of=1):
     """Pipeline completo: lista -> detalhes -> embeds -> Supabase."""
     async with async_playwright() as p:
         b = await p.chromium.launch(headless=True)
