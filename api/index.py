@@ -156,7 +156,7 @@ def detalhe(identificador: str):
         e["sources"] = srcs_map.get(e["id"], [])
 
     anime["episodios"] = eps
-    return anime
+    return JSONResponse(content=anime, headers=CACHE_HEADERS)
 
 
 # ============================================================
