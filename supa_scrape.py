@@ -133,7 +133,7 @@ def animes_pendentes_no_supabase(shard=0, of=1):
     - com episodes_count > 0 mas sem eps reais
     Retorna lista de {url, capa} para o pipeline processar."""
     # animes com sources vazio
-    r = SB.table('animes').select('id,slug,capa,sources,episodes_count').execute()
+    r = SB.table('animes').select('id,slug,capa,sources,episodes_count,sem_eps').execute()
     pendentes = []
     for a in r.data:
         precisa = False
@@ -145,6 +145,9 @@ def animes_pendentes_no_supabase(shard=0, of=1):
             n = SB.table('episodes').select('id', count='exact').eq('anime_id', a['id']).execute().count
             if n == 0:
                 precisa = True
+        # pula animes marcados como sem eps
+        if a.get('sem_eps'):
+            continue
         if precisa:
             # filtro de shard: 0=par, 1=impar, etc.
             if (a['id'] % of) != shard:
@@ -232,6 +235,11 @@ async def pipeline(base_url, batch=100, pages_limit=0,
                     html = await pg.content()
                     info = extrair_detalhes(html, item['url'], capa_listagem=item.get('capa'))
                     info['id'] = slug; info['slug'] = slug
+                    if not info.get('episodios'):
+                        try:
+                            SB.table('animes').update({'sem_eps': True}).eq('slug', slug).execute()
+                            log(f'      [sem_eps] {slug}')
+                        except Exception: pass
                     info['source'] = fonte
                     info['scraped_at'] = iso_now()
                     resultado[i].update(info)
