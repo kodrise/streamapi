@@ -125,6 +125,35 @@ def sb_add_source(anime_id, source):
     except Exception:
         pass
 
+
+
+def animes_pendentes_no_supabase():
+    """Lê do Supabase os animes que precisam de processamento:
+    - sem sources (nunca processados nessa fonte)
+    - com episodes_count > 0 mas sem eps reais
+    Retorna lista de {url, capa} para o pipeline processar."""
+    # animes com sources vazio
+    r = SB.table('animes').select('id,slug,capa,sources,episodes_count').execute()
+    pendentes = []
+    for a in r.data:
+        precisa = False
+        # sem sources registradas
+        if not a.get('sources'):
+            precisa = True
+        else:
+            # tem sources mas sem eps reais
+            n = SB.table('episodes').select('id', count='exact').eq('anime_id', a['id']).execute().count
+            if n == 0:
+                precisa = True
+        if precisa:
+            pendentes.append({
+                'url': f"https://goyabu.io/anime/{a['slug']}",
+                'capa': a.get('capa'),
+                '_pg_id': a['id'] if a.get('sources') else None,
+            })
+    return pendentes
+
+
 async def pipeline(base_url, batch=100, pages_limit=0,
                    workers_detail=8, workers_embed=8, skip_existing=True):
     """Pipeline completo: lista -> detalhes -> embeds -> Supabase."""
@@ -132,14 +161,18 @@ async def pipeline(base_url, batch=100, pages_limit=0,
         b = await p.chromium.launch(headless=True)
         ctx = await b.new_context(user_agent=UA, viewport={'width':1920,'height':1080}, locale='pt-BR')
 
-        if re.search(r'/anime/[^/]+/?$', base_url):
+        if from_db:
+            log('[1] modo --from-db: lendo animes pendentes do Supabase (sem listagem)')
+            animes = await asyncio.to_thread(animes_pendentes_no_supabase)
+            log(f'[1] {len(animes)} animes pendentes encontrados')
+        elif re.search(r'/anime/[^/]+/?$', base_url):
             log('[1] URL de anime especifico, pulando listagem')
             animes = [{'url': base_url, 'capa': None}]
         else:
             animes = await listar(ctx, base_url, pages_limit=pages_limit)
         log(f'[=] {len(animes)} animes na fila')
 
-        resultado = [{'url': a['url'], 'capa': a.get('capa')} for a in animes]
+        resultado = [{'url': a['url'], 'capa': a.get('capa'), '_pg_id': a.get('_pg_id')} for a in animes]
         fonte = urlparse(base_url).netloc
         stats = {'d_ok':0,'d_skip':0,'e_ok':0,'e_dead':0,'e_sem':0}
 
@@ -290,10 +323,11 @@ def main():
     ap.add_argument('--workers-detail', type=int, default=8)
     ap.add_argument('--workers-embed', type=int, default=8)
     ap.add_argument('--no-skip', action='store_true')
+    ap.add_argument('--from-db', action='store_true', help='le animes do Supabase, sem listar')
     args = ap.parse_args()
     asyncio.run(pipeline(args.url, batch=args.batch, pages_limit=args.pages_limit,
                          workers_detail=args.workers_detail, workers_embed=args.workers_embed,
-                         skip_existing=not args.no_skip))
+                         skip_existing=not args.no_skip, from_db=args.from_db))
 
 
 if __name__ == '__main__':
