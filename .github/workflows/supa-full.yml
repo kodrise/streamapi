@@ -4,33 +4,48 @@ on:
   workflow_dispatch:
 
 jobs:
-  scrape:
+  scrape-a:
     runs-on: ubuntu-latest
     timeout-minutes: 350
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-
-      - name: instala deps
+        with: { python-version: '3.12', cache: pip }
+      - name: deps
         run: |
           pip install -r requirements-scraper.txt
           playwright install chromium
           playwright install-deps chromium
-
-      - name: cria .env
+      - name: .env
         run: |
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
           echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
-
-      - name: roda scrape -> supabase
+      - name: scrape shard 0
         run: |
-          python supa_scrape.py "https://goyabu.io/lista-de-animes" --from-db --batch 100
+          python supa_scrape.py "https://goyabu.io/lista-de-animes" --from-db --shard 0 --of 2 --batch 100
+      - name: limpa
+        if: always()
+        run: rm -f .env
 
-      - name: limpa .env
+  scrape-b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12', cache: pip }
+      - name: deps
+        run: |
+          pip install -r requirements-scraper.txt
+          playwright install chromium
+          playwright install-deps chromium
+      - name: .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
+      - name: scrape shard 1
+        run: |
+          python supa_scrape.py "https://goyabu.io/lista-de-animes" --from-db --shard 1 --of 2 --batch 100
+      - name: limpa
         if: always()
         run: rm -f .env

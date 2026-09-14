@@ -127,7 +127,7 @@ def sb_add_source(anime_id, source):
 
 
 
-def animes_pendentes_no_supabase():
+def animes_pendentes_no_supabase(shard=0, of=1):
     """Lê do Supabase os animes que precisam de processamento:
     - sem sources (nunca processados nessa fonte)
     - com episodes_count > 0 mas sem eps reais
@@ -146,6 +146,9 @@ def animes_pendentes_no_supabase():
             if n == 0:
                 precisa = True
         if precisa:
+            # filtro de shard: 0=par, 1=impar, etc.
+            if (a['id'] % of) != shard:
+                continue
             pendentes.append({
                 'url': f"https://goyabu.io/anime/{a['slug']}",
                 'capa': a.get('capa'),
@@ -163,8 +166,8 @@ async def pipeline(base_url, batch=100, pages_limit=0,
 
         if from_db:
             log('[1] modo --from-db: lendo animes pendentes do Supabase (sem listagem)')
-            animes = await asyncio.to_thread(animes_pendentes_no_supabase)
-            log(f'[1] {len(animes)} animes pendentes encontrados')
+            animes = await asyncio.to_thread(animes_pendentes_no_supabase, shard, of)
+            log(f'[1] {len(animes)} animes pendentes (shard {shard}/{of})')
         elif re.search(r'/anime/[^/]+/?$', base_url):
             log('[1] URL de anime especifico, pulando listagem')
             animes = [{'url': base_url, 'capa': None}]
@@ -324,10 +327,13 @@ def main():
     ap.add_argument('--workers-embed', type=int, default=8)
     ap.add_argument('--no-skip', action='store_true')
     ap.add_argument('--from-db', action='store_true', help='le animes do Supabase, sem listar')
+    ap.add_argument('--shard', type=int, default=0)
+    ap.add_argument('--of', type=int, default=1)
     args = ap.parse_args()
     asyncio.run(pipeline(args.url, batch=args.batch, pages_limit=args.pages_limit,
                          workers_detail=args.workers_detail, workers_embed=args.workers_embed,
-                         skip_existing=not args.no_skip, from_db=args.from_db))
+                         skip_existing=not args.no_skip, from_db=args.from_db,
+                         shard=args.shard, of=args.of))
 
 
 if __name__ == '__main__':
