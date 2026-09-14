@@ -27,7 +27,11 @@ app = FastAPI(
     openapi_url="/api/openapi.json",
 )
 
-CACHE_HEADERS = {'Cache-Control': 'public, max-age=300, s-maxage=600, stale-while-revalidate=3600'}
+CACHE_HEADERS = {
+    'Cache-Control': 'public, max-age=300, must-revalidate',
+    'CDN-Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600',
+    'Vercel-CDN-Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600',
+}
 
 app.add_middleware(
     CORSMiddleware,
