@@ -182,6 +182,32 @@ def episodios(identificador: str):
     return {"anime": found["slug"], "id": found["id"], "count": len(eps), "episodes": eps}
 
 
+
+
+# ============================================================
+# Lite — payload mínimo pro player (numero + status, sem sources)
+# ============================================================
+@app.get("/animes/{identificador}/lite")
+@app.get("/api/animes/{identificador}/lite")
+def anime_lite(identificador: str):
+    found = _buscar_anime(identificador)
+    if not found:
+        raise HTTPException(404, "anime nao encontrado")
+
+    anime = SB.table("animes").select("id,slug,titulo")\
+             .eq("id", found["id"]).single().execute().data
+
+    eps = SB.table("episodes").select("numero,status")\
+           .eq("anime_id", anime["id"]).order("numero").execute().data or []
+
+    return {
+        "id": anime["id"],
+        "slug": anime["slug"],
+        "titulo": anime["titulo"],
+        "episodios": [{"numero": e["numero"], "status": e.get("status") or "unknown"} for e in eps],
+    }
+
+
 # ============================================================
 # Resolve — só metadados (nunca expõe embed_url)
 # ============================================================
