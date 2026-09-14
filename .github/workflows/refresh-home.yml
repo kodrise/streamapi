@@ -1,0 +1,41 @@
+name: refresh-home
+
+on:
+  schedule:
+    - cron: '0 */2 * * *'   # a cada 2h
+  workflow_dispatch:
+
+concurrency:
+  group: refresh-home
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: instala deps
+        run: |
+          pip install -r requirements-scraper.txt
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: cria .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
+
+      - name: refresh
+        run: python refresh_home.py
+
+      - name: limpa .env
+        if: always()
+        run: rm -f .env
