@@ -50,17 +50,12 @@ async def main():
     args = ap.parse_args()
 
     log("[*] coletando sources...")
-    rows = []
-    for an in SB.table("animes").select("id").execute().data:
-        eps = SB.table("episodes").select("id").eq("anime_id", an["id"]).execute().data
-        for ep in eps:
-            srcs = SB.table("episode_sources").select("id,embed_url,status")\
-                .eq("episode_id", ep["id"]).execute().data
-            for s in srcs:
-                if not s.get("embed_url"): continue
-                if args.only_unknown and s.get("status") in ("alive", "dead"): continue
-                rows.append(s)
-    if args.limit: rows = rows[:args.limit]
+    q = SB.table("episode_sources").select("id,embed_url,status").not_.is_("embed_url", "null")
+    if args.only_unknown:
+        q = q.or_("status.is.null,status.eq.unknown")
+    if args.limit:
+        q = q.limit(args.limit)
+    rows = q.execute().data or []
     log(f"[*] {len(rows)} sources pra validar\n")
 
     async with async_playwright() as p:
