@@ -328,13 +328,20 @@ def extrair_detalhes(html, url, capa_listagem=None):
             continue
         vistos.add(ep_url)
         txt = a.get_text(" ", strip=True)
-        m = re.search(r"(\d+)", txt)
-        numero = int(m.group(1)) if m else None
-        if numero is None:
-            m = re.search(r"/video/a/(\d+)/?$", h)
+        numero = None
+        # 1) procura "Episodio N" / "Ep. N" / "Ep N" / "E N" no texto
+        for pat in (r"[Ee]pis[oó]dio\s*(\d+)", r"\b[Ee]p\.?\s*(\d+)",
+                    r"\b[Ee]\s*(\d+)\b"):
+            m = re.search(pat, txt)
             if m:
-                v = int(m.group(1))
-                numero = v if v < 1000 else None
+                numero = int(m.group(1))
+                break
+        if numero is None:
+            # 2) tenta o texto ANTES do titulo do anime (numeros isolados curtos)
+            # pega o ULTIMO numero curto do texto (evita "100-man" no inicio)
+            nums = re.findall(r"\b(\d{1,3})\b", txt)
+            if nums:
+                numero = int(nums[-1])
         if numero is None:
             continue
         out["episodios"].append({
