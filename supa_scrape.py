@@ -137,12 +137,13 @@ def animes_pendentes_no_supabase(shard=0, of=1):
     page = 1000
 
     while True:
-        r = SB.table('animes').select('id,slug,capa,sources,episodes_count,sem_eps')\
+        r = SB.table('animes').select('id,slug,capa,sources,episodes_count,sem_eps,morto')\
             .range(offset, offset + page - 1).execute().data or []
         if not r: break
 
         for a in r:
             if a.get('sem_eps'): continue
+            if a.get('morto'): continue
 
             precisa = False
             if not a.get('sources'):

@@ -102,8 +102,13 @@ def push_anime(info):
     doc = {k: v for k, v in info.items() if k != "episodios"}
     doc["episodes_count"] = len(info.get("episodios", []))
     doc["sources"] = list(set((doc.get("sources") or []) + ["goyabu.io"]))
+    # preserva morto=true se ja existia
+    existe = SB.table('animes').select('morto').eq('slug', slug).limit(1).execute()
+    morto_flag = bool(existe.data and existe.data[0].get('morto'))
+
     SB.table("animes").upsert({
         "slug": slug,
+        "morto": morto_flag,
         "titulo": info.get("titulo") or slug,
         "titulo_original": info.get("titulo_original"),
         "capa": info.get("capa"),
