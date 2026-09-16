@@ -1,6 +1,8 @@
 name: validar
 
 on:
+  schedule:
+    - cron: '0 5 * * 0'   # domingo 5h UTC — re-check semanal
   workflow_dispatch:
     inputs:
       only_unknown:
@@ -25,7 +27,12 @@ jobs:
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
           echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
       - name: valida shard 0
-        run: python validar_supa.py --workers 8 --shard 0 --of 2 --only-unknown
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            python validar_supa.py --workers 8 --shard 0 --of 2 --recheck-alive-days 30
+          else
+            python validar_supa.py --workers 8 --shard 0 --of 2 --only-unknown
+          fi
       - name: limpa
         if: always()
         run: rm -f .env
@@ -47,7 +54,12 @@ jobs:
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
           echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
       - name: valida shard 1
-        run: python validar_supa.py --workers 8 --shard 1 --of 2 --only-unknown
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            python validar_supa.py --workers 8 --shard 1 --of 2 --recheck-alive-days 30
+          else
+            python validar_supa.py --workers 8 --shard 1 --of 2 --only-unknown
+          fi
       - name: limpa
         if: always()
         run: rm -f .env

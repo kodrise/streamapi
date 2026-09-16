@@ -47,6 +47,8 @@ async def main():
     ap.add_argument("--limit", type=int, default=0, help="max sources (0=todos)")
     ap.add_argument("--workers", type=int, default=5)
     ap.add_argument("--only-unknown", action="store_true", help="so os sem status")
+    ap.add_argument("--recheck-alive-days", type=int, default=0,
+                    help="revalida alive com checked_at mais antigo que N dias")
     ap.add_argument("--shard", type=int, default=0)
     ap.add_argument("--of", type=int, default=1)
     args = ap.parse_args()
@@ -58,7 +60,12 @@ async def main():
     while True:
         q = SB.table("episode_sources").select("id,embed_url,status")\
             .not_.is_("embed_url", "null")
-        if args.only_unknown:
+        if args.recheck_alive_days > 0:
+            from datetime import timedelta
+            corte = (datetime.now(timezone.utc)
+                     - timedelta(days=args.recheck_alive_days)).isoformat()
+            q = q.eq("status", "alive").lt("checked_at", corte)
+        elif args.only_unknown:
             q = q.or_("status.is.null,status.eq.unknown")
         q = q.range(offset, offset + page - 1)
         lote = q.execute().data or []
