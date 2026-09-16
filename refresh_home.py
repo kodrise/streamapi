@@ -10,6 +10,7 @@ from supabase import create_client
 from playwright.async_api import async_playwright
 
 import scrape  # reusa extrair_detalhes + capturar_embed
+from scrape import limpar_slug
 
 load_dotenv()
 SB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
@@ -74,7 +75,7 @@ async def achar_anime_do_ep(ctx, ep_url):
             h = a["href"]
             if re.search(r"/anime/[^/]+/?$", h):
                 url = urljoin(ep_url, h)
-                slug = urlparse(url).path.strip("/").split("/")[-1]
+                slug = limpar_slug(urlparse(url).path.strip("/").split("/")[-1])
                 return {"anime_slug": slug, "anime_url": url}
         return None
     finally:

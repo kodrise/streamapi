@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from scrape import (
     _json_default, iso_now, embed_token_id, UA, log,
     listar, extrair_detalhes,
-    capturar_embed, validar_token_blogger,
+    capturar_embed, validar_token_blogger, limpar_slug,
 )
 
 from supabase import create_client
@@ -177,7 +177,7 @@ async def seed_animes(ctx, base_url, pages_limit=0):
 
     inseridos = 0
     for a in animes:
-        slug = urlparse(a['url']).path.strip('/').split('/')[-1]
+        slug = limpar_slug(urlparse(a['url']).path.strip('/').split('/')[-1])
         # se ja existe, pula
         r = SB.table('animes').select('id').eq('slug', slug).limit(1).execute()
         if r.data:
@@ -225,7 +225,7 @@ async def pipeline(base_url, batch=100, pages_limit=0,
 
         async def detalhe(i, item):
             async with sem2:
-                slug = urlparse(item['url']).path.strip('/').split('/')[-1]
+                slug = limpar_slug(urlparse(item['url']).path.strip('/').split('/')[-1])
                 existente = sb_anime_pronto(slug)
                 if skip_existing and existente and fonte in (existente.get('sources') or []):
                     stats['d_skip'] += 1

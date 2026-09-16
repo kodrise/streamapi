@@ -141,6 +141,31 @@ UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 def log(*a): print(*a, flush=True)
 def iso_now(): return datetime.now(timezone.utc).isoformat()
 
+CYR = {
+    'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z',
+    'и':'i','й':'i','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r',
+    'с':'s','т':'t','у':'u','ф':'f','х':'h','ц':'ts','ч':'ch','ш':'sh','щ':'sch',
+    'ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya',
+    'А':'a','Б':'b','В':'v','Г':'g','Д':'d','Е':'e','Ё':'e','Ж':'zh','З':'z',
+    'И':'i','Й':'i','К':'k','Л':'l','М':'m','Н':'n','О':'o','П':'p','Р':'r',
+    'С':'s','Т':'t','У':'u','Ф':'f','Х':'h','Ц':'ts','Ч':'ch','Ш':'sh','Щ':'sch',
+    'Ъ':'','Ы':'y','Ь':'','Э':'e','Ю':'yu','Я':'ya',
+}
+
+
+def limpar_slug(slug):
+    """Normaliza slug URL-encoded/Unicode pra ASCII puro."""
+    from urllib.parse import unquote
+    import unicodedata
+    s = unquote(slug)
+    s = ''.join(CYR.get(ch, ch) for ch in s)
+    s = unicodedata.normalize('NFKD', s)
+    s = s.encode('ascii', 'ignore').decode('ascii')
+    s = re.sub(r'[^a-z0-9]+', '-', s.lower())
+    s = re.sub(r'-+', '-', s).strip('-')
+    return s
+
+
 def embed_token_id(u):
     if not u: return None
     m = re.search(r'token=([A-Za-z0-9_\-]+)', u)
