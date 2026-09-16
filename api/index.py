@@ -105,7 +105,7 @@ def listar_animes(
 ):
     q = SB.table("animes").select(
         "id,slug,titulo,ano,nota,tipo,audio,generos,capa,status,sources,episodes_count",
-        count="exact")
+        count="exact").not_.eq("morto", True)
 
     if genero:   q = q.contains("generos", [genero])
     if tipo:     q = q.eq("tipo", tipo)
@@ -133,6 +133,9 @@ def detalhe(identificador: str):
     found = _buscar_anime(identificador)
     if not found:
         raise HTTPException(404, "anime nao encontrado")
+    check = SB.table("animes").select("morto").eq("id", found["id"]).single().execute()
+    if check.data and check.data.get("morto"):
+        raise HTTPException(404, "anime indisponivel")
 
     anime = SB.table("animes").select(
         "id,slug,titulo,titulo_original,capa,sinopse,ano,nota,status,"
@@ -199,6 +202,10 @@ def anime_lite(identificador: str):
     found = _buscar_anime(identificador)
     if not found:
         raise HTTPException(404, "anime nao encontrado")
+    # checa se o anime ta marcado como morto
+    check = SB.table("animes").select("morto").eq("id", found["id"]).single().execute()
+    if check.data and check.data.get("morto"):
+        raise HTTPException(404, "anime indisponivel")
 
     anime = SB.table("animes").select("id,slug,titulo")\
              .eq("id", found["id"]).single().execute().data
