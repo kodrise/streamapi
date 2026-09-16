@@ -9,6 +9,8 @@ from bs4 import BeautifulSoup
 from supabase import create_client
 from playwright.async_api import async_playwright
 
+import scrape  # reusa extrair_detalhes + capturar_embed
+
 load_dotenv()
 SB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
@@ -27,7 +29,6 @@ async def ler_home(ctx):
             await pg.mouse.wheel(0, 4000)
             await pg.wait_for_timeout(500)
         soup = BeautifulSoup(await pg.content(), "lxml")
-
         eps = []
         vistos = set()
         for art in soup.find_all("article", class_="boxEP"):
@@ -81,7 +82,6 @@ async def achar_anime_do_ep(ctx, ep_url):
 
 async def processar_ep(ctx, ep_info):
     """Abre a pagina do anime, extrai detalhes e grava os eps que faltam."""
-    import scrape  # reusa extrair_detalhes
     pg = await ctx.new_page()
     try:
         await pg.goto(ep_info["anime_url"], wait_until="networkidle", timeout=45000)
@@ -98,11 +98,9 @@ async def processar_ep(ctx, ep_info):
 def push_anime(info):
     slug = info.get("slug")
     if not slug: return False
-    # doc do anime
     doc = {k: v for k, v in info.items() if k != "episodios"}
     doc["episodes_count"] = len(info.get("episodios", []))
     doc["sources"] = list(set((doc.get("sources") or []) + ["goyabu.io"]))
-    # preserva morto=true se ja existia
     existe = SB.table('animes').select('morto').eq('slug', slug).limit(1).execute()
     morto_flag = bool(existe.data and existe.data[0].get('morto'))
 
@@ -124,11 +122,9 @@ def push_anime(info):
         "scraped_at": iso(),
     }, on_conflict="slug").execute()
 
-    # pega id do anime
     r = SB.table("animes").select("id").eq("slug", slug).single().execute()
     aid = r.data["id"]
 
-    # grava eps
     for ep in info.get("episodios", []):
         numero = ep.get("numero")
         if numero is None: continue
@@ -138,11 +134,9 @@ def push_anime(info):
             "titulo": ep.get("titulo") or f"Ep {numero}",
         }, on_conflict="anime_id,numero").execute()
 
-        # pega id do ep
         er = SB.table("episodes").select("id").eq("anime_id", aid).eq("numero", numero).single().execute()
         eid = er.data["id"]
 
-        # grava source se tiver embed
         if ep.get("embed_url"):
             SB.table("episode_sources").upsert({
                 "episode_id": eid,
@@ -165,7 +159,6 @@ async def main():
         eps = await ler_home(ctx)
         log(f"[home] {len(eps)} eps recentes")
 
-        # agrupa por anime (um anime pode ter 2 eps na home)
         animes_vistos = {}
         for e in eps:
             info = await achar_anime_do_ep(ctx, e["ep_url"])
@@ -186,8 +179,42 @@ async def main():
                     log(f"  [sem_eps] {slug}")
                     continue
                 push_anime(detalhes)
+
+                # NOVO: garante episode_sources pros eps criados sem embed
+                aid_row = SB.table("animes").select("id").eq("slug", slug).single().execute()
+                aid = aid_row.data["id"] if aid_row.data else None
+                novos_embeds = 0
+                if aid:
+                    for ep in detalhes.get("episodios", []):
+                        numero = ep.get("numero")
+                        if numero is None:
+                            continue
+                        er = SB.table("episodes").select("id")\
+                            .eq("anime_id", aid).eq("numero", numero).limit(1).execute()
+                        if not er.data:
+                            continue
+                        eid = er.data[0]["id"]
+                        ja = SB.table("episode_sources").select("id")\
+                            .eq("episode_id", eid).limit(1).execute().data
+                        if ja:
+                            continue
+                        embed, tipo = await scrape.capturar_embed(ctx, ep["url"])
+                        if not embed:
+                            continue
+                        SB.table("episode_sources").upsert({
+                            "episode_id": eid,
+                            "source": "goyabu.io",
+                            "url": ep["url"],
+                            "embed_url": embed,
+                            "embed_type": tipo,
+                            "embed_id": scrape.embed_token_id(embed),
+                            "status": "unknown",
+                            "checked_at": iso(),
+                        }, on_conflict="episode_id,source").execute()
+                        novos_embeds += 1
+
                 ok += 1
-                log(f"  [ok] {slug}: {n} eps")
+                log(f"  [ok] {slug}: {n} eps ({novos_embeds} embeds novos)")
             except Exception as ex:
                 log(f"  [erro] {slug}: {str(ex)[:80]}")
 
