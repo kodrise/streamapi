@@ -148,9 +148,11 @@ def detalhe(identificador: str):
 
     ids = [e["id"] for e in eps]
     srcs_map = {}
-    if ids:
+    # batch de 100 — evita IN gigante pro One Piece (878 eps)
+    for i in range(0, len(ids), 100):
+        chunk = ids[i:i + 100]
         for s in SB.table("episode_sources").select(
-                "episode_id,source,embed_url,status").in_("episode_id", ids).execute().data or []:
+                "episode_id,source,embed_url,status").in_("episode_id", chunk).execute().data or []:
             srcs_map.setdefault(s["episode_id"], []).append({
                 "source": s["source"],
                 "status": s.get("status"),
@@ -179,9 +181,10 @@ def episodios(identificador: str):
 
     ids = [e["id"] for e in eps]
     srcs_map = {}
-    if ids:
+    for i in range(0, len(ids), 100):
+        chunk = ids[i:i + 100]
         for s in SB.table("episode_sources").select(
-                "episode_id,source,embed_url,status").in_("episode_id", ids).execute().data or []:
+                "episode_id,source,embed_url,status").in_("episode_id", chunk).execute().data or []:
             srcs_map.setdefault(s["episode_id"], []).append({
                 "source": s["source"],
                 "status": s.get("status"),
