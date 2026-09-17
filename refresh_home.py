@@ -133,6 +133,9 @@ def push_anime(info):
             "anime_id": aid,
             "numero": numero,
             "titulo": ep.get("titulo") or f"Ep {numero}",
+            "episode_name": ep.get("episode_name"),
+            "thumb": ep.get("thumb"),
+            "audio": ep.get("audio"),
         }, on_conflict="anime_id,numero").execute()
 
         er = SB.table("episodes").select("id").eq("anime_id", aid).eq("numero", numero).single().execute()
