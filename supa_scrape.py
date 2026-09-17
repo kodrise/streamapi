@@ -288,7 +288,7 @@ async def pipeline(base_url, batch=100, pages_limit=0,
                 d['embed_id'] = embed_token_id(embed)
                 d['id'] = f'ep-{numero:03d}'
                 d['numero'] = numero
-                d['scraped_at'] = iso_now()
+                # scraped_at vem do parser (allEpisodes.update)
 
                 if embed:
                     d['status'] = 'unknown'
