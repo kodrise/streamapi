@@ -386,6 +386,13 @@ def extrair_detalhes(html, url, capa_listagem=None):
         audio.append('legendado')
     out['audio'] = audio
 
+    # tenta allEpisodes (JSON inline) primeiro — traz thumb, episode_name, data
+    _eps_json = _parse_all_episodes(html, url)
+    if _eps_json:
+        out['episodios'] = _eps_json
+        return out
+
+    # fallback: parser DOM (animes sem allEpisodes)
     vistos = set()
     for a in soup.find_all('a', href=True):
         href = a['href']
@@ -408,6 +415,59 @@ def extrair_detalhes(html, url, capa_listagem=None):
                                  'url': ep_url})
     out['episodios'].sort(key=lambda e: (e['numero'] is None, e['numero'] or 0))
     return out
+
+# ============ PARSER: allEpisodes (JSON inline) ============
+def _parse_all_episodes(html, base_url):
+    """
+    Extrai o array allEpisodes do HTML inline do goyabu.
+    Vantagens vs parser DOM:
+      - thumb por ep (campo 'imagem')
+      - episode_name (titulo real)
+      - update (data ISO exata)
+      - audio (ptBr/jap)
+    Retorna lista de dicts ou None se nao achar.
+    """
+    m = re.search(r'allEpisodes\s*[:=]\s*(\[[^\]]+\])', html, re.S)
+    if not m:
+        return None
+    try:
+        raw = json.loads(m.group(1))
+    except Exception:
+        return None
+    if not isinstance(raw, list):
+        return None
+
+    eps = []
+    for e in raw:
+        numero = e.get("episodio")
+        if numero is None:
+            continue
+        try:
+            numero = int(numero)
+        except (ValueError, TypeError):
+            continue
+
+        thumb = None
+        if e.get("imagem"):
+            img = e["imagem"]
+            thumb = img if img.startswith("http") else urljoin(base_url, img)
+
+        link = e.get("link") or ""
+        ep_url = link if link.startswith("http") else urljoin(base_url, link)
+
+        name = e.get("episode_name") or None
+
+        eps.append({
+            "numero": numero,
+            "titulo": name or f"Ep {numero}",
+            "episode_name": name,
+            "url": ep_url,
+            "thumb": thumb,
+            "audio": e.get("audio"),
+            "scraped_at": e.get("update"),
+        })
+    return eps if eps else None
+
 
 # ============ ESTAGIO 3: EMBED ============
 async def capturar_embed(ctx, ep_url, timeout=25):

@@ -393,6 +393,9 @@ def gravar_ep(aid, numero, ep, eid, acao):
             "anime_id": aid,
             "numero": numero,
             "titulo": ep.get("titulo") or f"Ep {numero}",
+            "episode_name": ep.get("episode_name"),
+            "thumb": ep.get("thumb"),
+            "audio": ep.get("audio"),
             "status": "unknown",
         }, on_conflict="anime_id,numero").execute()
         r = SB.table("episodes").select("id")\
