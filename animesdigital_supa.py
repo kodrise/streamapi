@@ -394,6 +394,7 @@ def gravar_ep(aid, numero, ep, eid, acao):
             "numero": numero,
             "titulo": ep.get("titulo") or f"Ep {numero}",
             "episode_name": ep.get("episode_name"),
+            "scraped_at": ep.get("scraped_at"),
             "thumb": ep.get("thumb"),
             "audio": ep.get("audio"),
             "status": "unknown",

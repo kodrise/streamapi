@@ -143,7 +143,7 @@ def detalhe(identificador: str):
     ).eq("id", found["id"]).single().execute().data
 
     eps = SB.table("episodes").select(
-        "id,numero,titulo,episode_name,thumb,audio,status")\
+        "id,numero,titulo,episode_name,thumb,audio,scraped_at,status")\
           .eq("anime_id", anime["id"]).order("numero").execute().data or []
 
     ids = [e["id"] for e in eps]
@@ -212,7 +212,7 @@ def anime_lite(identificador: str):
     anime = SB.table("animes").select("id,slug,titulo")\
              .eq("id", found["id"]).single().execute().data
 
-    eps = SB.table("episodes").select("numero,episode_name,thumb,audio,status")\
+    eps = SB.table("episodes").select("numero,episode_name,thumb,audio,scraped_at,status")\
            .eq("anime_id", anime["id"]).order("numero").execute().data or []
 
     return JSONResponse(
@@ -225,6 +225,7 @@ def anime_lite(identificador: str):
                 "titulo": e.get("episode_name") or f"Ep {e['numero']}",
                 "thumb": e.get("thumb"),
                 "audio": e.get("audio"),
+                "atualizado_em": e.get("scraped_at"),
                 "status": e.get("status") or "unknown",
             } for e in eps],
         },

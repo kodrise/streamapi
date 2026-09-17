@@ -134,6 +134,7 @@ def push_anime(info):
             "numero": numero,
             "titulo": ep.get("titulo") or f"Ep {numero}",
             "episode_name": ep.get("episode_name"),
+            "scraped_at": ep.get("scraped_at"),
             "thumb": ep.get("thumb"),
             "audio": ep.get("audio"),
         }, on_conflict="anime_id,numero").execute()

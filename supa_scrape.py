@@ -78,6 +78,7 @@ def sb_push_ep(anime_id, ep, source):
         'numero': numero,
         'titulo': ep.get('titulo'),
         'episode_name': ep.get('episode_name'),
+        'scraped_at': ep.get('scraped_at'),
         'thumb': ep.get('thumb'),
         'audio': ep.get('audio'),
         'status': ep.get('status') or 'unknown',
