@@ -142,7 +142,8 @@ def detalhe(identificador: str):
         "generos,sources,episodes_count,tipo,audio,scraped_at,created_at,updated_at"
     ).eq("id", found["id"]).single().execute().data
 
-    eps = SB.table("episodes").select("id,numero,titulo,status")\
+    eps = SB.table("episodes").select(
+        "id,numero,titulo,episode_name,thumb,audio,status")\
           .eq("anime_id", anime["id"]).order("numero").execute().data or []
 
     ids = [e["id"] for e in eps]
@@ -172,7 +173,8 @@ def episodios(identificador: str):
     if not found:
         raise HTTPException(404, "anime nao encontrado")
 
-    eps = SB.table("episodes").select("id,numero,titulo,status")\
+    eps = SB.table("episodes").select(
+        "id,numero,titulo,episode_name,thumb,audio,status")\
           .eq("anime_id", found["id"]).order("numero").execute().data or []
 
     ids = [e["id"] for e in eps]
@@ -210,7 +212,7 @@ def anime_lite(identificador: str):
     anime = SB.table("animes").select("id,slug,titulo")\
              .eq("id", found["id"]).single().execute().data
 
-    eps = SB.table("episodes").select("numero,status")\
+    eps = SB.table("episodes").select("numero,episode_name,thumb,audio,status")\
            .eq("anime_id", anime["id"]).order("numero").execute().data or []
 
     return JSONResponse(
@@ -218,7 +220,13 @@ def anime_lite(identificador: str):
             "id": anime["id"],
             "slug": anime["slug"],
             "titulo": anime["titulo"],
-            "episodios": [{"numero": e["numero"], "status": e.get("status") or "unknown"} for e in eps],
+            "episodios": [{
+                "numero": e["numero"],
+                "titulo": e.get("episode_name") or f"Ep {e['numero']}",
+                "thumb": e.get("thumb"),
+                "audio": e.get("audio"),
+                "status": e.get("status") or "unknown",
+            } for e in eps],
         },
         headers=CACHE_HEADERS,
     )
