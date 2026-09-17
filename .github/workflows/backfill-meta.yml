@@ -1,0 +1,49 @@
+name: backfill-meta
+
+on:
+  workflow_dispatch:
+
+jobs:
+  backfill-a:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12', cache: pip }
+      - name: deps
+        run: |
+          pip install -r requirements-scraper.txt
+          playwright install chromium
+          playwright install-deps chromium
+      - name: .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
+      - name: backfill shard 0
+        run: python backfill_meta.py --workers 6 --batch 50 --shard 0 --of 2
+      - name: limpa
+        if: always()
+        run: rm -f .env
+
+  backfill-b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12', cache: pip }
+      - name: deps
+        run: |
+          pip install -r requirements-scraper.txt
+          playwright install chromium
+          playwright install-deps chromium
+      - name: .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
+      - name: backfill shard 1
+        run: python backfill_meta.py --workers 6 --batch 50 --shard 1 --of 2
+      - name: limpa
+        if: always()
+        run: rm -f .env
