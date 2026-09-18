@@ -2,6 +2,7 @@
 # language: Python, file: validar_supa.py
 # Testa embed_url dos eps contra o Blogger. Marca status alive/dead no Supabase.
 import asyncio, os, re, sys, argparse
+import httpx
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 from supabase import create_client
@@ -15,32 +16,59 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 def log(*a): print(*a, flush=True)
 
 async def validar_token(ctx, embed_url, timeout=20):
-    """Retorna True (vivo), False (morto), None (skip)."""
-    if not embed_url or "blogger.com" not in embed_url:
+    """Roteia por host:
+       - blogger.com      -> Playwright (espera googlevideo)
+       - api.anivideo.net -> dead (token HLS expira em horas)
+       - outros           -> HEAD via httpx (200=alive, 4xx/5xx=dead)
+    """
+    if not embed_url:
         return None
-    pg = await ctx.new_page()
-    achou = {"ok": False}
-    async def on_resp(r):
-        if "googlevideo.com/videoplayback" in r.url:
-            achou["ok"] = True
-        if "batchexecute" in r.url:
-            try:
-                body = await r.text()
-                if "googlevideo" in body:
-                    achou["ok"] = True
-            except Exception:
-                pass
-    pg.on("response", on_resp)
+
+    low = embed_url.lower()
+
+    # anivideo: token expira em horas, sempre dead
+    if "api.anivideo.net" in low:
+        return False
+
+    # blogger: Playwright (comportamento original)
+    if "blogger.com" in low:
+        pg = await ctx.new_page()
+        achou = {"ok": False}
+        async def on_resp(r):
+            if "googlevideo.com/videoplayback" in r.url:
+                achou["ok"] = True
+            if "batchexecute" in r.url:
+                try:
+                    if "googlevideo" in await r.text():
+                        achou["ok"] = True
+                except Exception:
+                    pass
+        pg.on("response", on_resp)
+        try:
+            await pg.goto(embed_url, wait_until="domcontentloaded", timeout=timeout*1000)
+            for _ in range(timeout):
+                if achou["ok"]:
+                    break
+                await pg.wait_for_timeout(1000)
+        except Exception:
+            pass
+        finally:
+            await pg.close()
+        return achou["ok"]
+
+    # outros hosts: HEAD via httpx (async)
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://goyabu.io/",
+    }
     try:
-        await pg.goto(embed_url, wait_until="domcontentloaded", timeout=timeout*1000)
-        for _ in range(timeout):
-            if achou["ok"]: break
-            await pg.wait_for_timeout(1000)
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True, headers=headers) as c:
+            r = await c.head(embed_url)
+            if r.status_code == 405:  # alguns servidores não aceitam HEAD
+                r = await c.get(embed_url)
+        return r.status_code < 400
     except Exception:
-        pass
-    finally:
-        await pg.close()
-    return achou["ok"]
+        return None
 
 async def main():
     ap = argparse.ArgumentParser()
