@@ -522,6 +522,11 @@ async def capturar_embed(ctx, ep_url, timeout=25):
             if embed: break
         if c['kind'] == 'iframe' and not embed:
             embed, tipo = u, 'iframe'
+
+    # anivideo: token HLS expira em horas, nao serve pra gravar
+    if embed and "api.anivideo.net" in embed:
+        return None, None
+
     return embed, tipo
 
 
