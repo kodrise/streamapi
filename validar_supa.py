@@ -120,7 +120,7 @@ async def main():
                                    locale="pt-BR",
                                    extra_http_headers={"Referer":"https://www.blogger.com/"})
         sem = asyncio.Semaphore(args.workers)
-        c = {"ok":0, "dead":0, "err":0}
+        c = {"ok":0, "dead":0, "unknown":0, "err":0}
 
         async def worker(row):
             async with sem:
@@ -131,7 +131,7 @@ async def main():
                     elif r is False:
                         st = "dead"; c["dead"] += 1
                     else:
-                        return
+                        st = "unknown"; c["unknown"] += 1
                     SB.table("episode_sources").update({
                         "status": st,
                         "checked_at": datetime.now(timezone.utc).isoformat(),
@@ -147,7 +147,7 @@ async def main():
             log(f"  {done}/{len(tarefas)} | alive:{c['ok']} dead:{c['dead']} err:{c['err']}")
         await b.close()
 
-    log(f"\n[+] fim: {c['ok']} alive | {c['dead']} dead | {c['err']} erro")
+    log(f"\n[+] fim: {c['ok']} alive | {c['dead']} dead | {c['unknown']} unknown | {c['err']} erro")
 
 if __name__ == "__main__":
     asyncio.run(main())
