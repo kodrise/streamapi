@@ -56,19 +56,23 @@ async def validar_token(ctx, embed_url, timeout=20):
             await pg.close()
         return achou["ok"]
 
-    # outros hosts: HEAD via httpx (async)
+    # outros hosts: HEAD via httpx (async), timeout generoso + 1 retry
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Referer": "https://goyabu.io/",
     }
-    try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True, headers=headers) as c:
-            r = await c.head(embed_url)
-            if r.status_code == 405:  # alguns servidores não aceitam HEAD
-                r = await c.get(embed_url)
-        return r.status_code < 400
-    except Exception:
-        return None
+    for tentativa in range(2):
+        try:
+            async with httpx.AsyncClient(timeout=20, follow_redirects=True, headers=headers) as c:
+                r = await c.head(embed_url)
+                if r.status_code == 405:  # alguns servidores não aceitam HEAD
+                    r = await c.get(embed_url)
+            return r.status_code < 400
+        except Exception:
+            if tentativa == 0:
+                await asyncio.sleep(2)
+                continue
+            return None
 
 async def main():
     ap = argparse.ArgumentParser()
