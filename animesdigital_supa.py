@@ -321,7 +321,7 @@ def extrair_detalhes(html, url, capa_listagem=None):
     vistos = set()
     for a in soup.find_all("a", href=True):
         h = a["href"]
-        if not re.search(r"/video/a/\d+/?$", h):
+        if not re.search(r"/video/a/[a-z0-9]+/?$", h, re.I):
             continue
         ep_url = urljoin(url, h)
         if ep_url in vistos:
@@ -571,6 +571,87 @@ async def pipeline(batch=50, pages_limit=0, workers_detail=4, workers_embed=4,
     log(f"\n[=] PRONTO | {stats}")
 
 
+async def pipeline_url(url, min_alive=2):
+    """Processa um único anime a partir da URL. Útil pra debug e backfill pontual."""
+    from urllib.parse import urlparse
+    path = urlparse(url).path.strip("/")
+    parts = path.split("/")
+    if len(parts) < 3 or parts[0] != "anime":
+        print(f"[!] URL inválida: {url}")
+        print(f"    Esperado: https://animesdigital.org/anime/{{letra}}/{{slug}}")
+        return
+    slug_raw = parts[-1]
+    print(f"[*] URL específica: {slug_raw}")
+
+    mapa = carregar_mapa_animes()
+
+    async with async_playwright() as p:
+        b = await p.chromium.launch(headless=True, args=["--no-sandbox"])
+        ctx = await b.new_context(user_agent=UA, viewport={"width":1920,"height":1080}, locale="pt-BR")
+
+        item = {"url": url, "slug_raw": slug_raw, "capa": None, "slug_limpo": limpar_slug(slug_raw)}
+
+        # puxa os detalhes manualmente (mesma lógica do detalhe() mas inline)
+        pg = await ctx.new_page()
+        try:
+            await pg.goto(url, wait_until="networkidle", timeout=45000)
+            await pg.wait_for_timeout(2500)
+            for _ in range(4):
+                await pg.mouse.wheel(0, 4000)
+                await pg.wait_for_timeout(500)
+            info = extrair_detalhes(await pg.content(), url, capa_listagem=None)
+            print(f"[+] {info.get('titulo')!r} — {len(info.get('episodios',[]))} eps")
+            if not info.get("episodios"):
+                print("[!] sem eps, nada a fazer")
+                await b.close()
+                return
+
+            existente, como = achar_anime_existente(mapa, info.get("titulo"), slug_raw)
+            if existente:
+                aid = existente["id"]
+                print(f"[+] MATCH({como}) com {existente['slug']} (id {aid})")
+                anexar_source(aid, FONTE)
+            else:
+                SB.table("animes").upsert({
+                    "slug": item["slug_limpo"],
+                    "titulo": info.get("titulo") or slug_raw,
+                    "capa": info.get("capa"),
+                    "sinopse": info.get("sinopse"),
+                    "ano": info.get("ano"),
+                    "generos": info.get("generos") or [],
+                    "sources": [FONTE],
+                    "episodes_count": len(info["episodios"]),
+                    "scraped_at": iso_now(),
+                }, on_conflict="slug").execute()
+                r = SB.table("animes").select("id").eq("slug", item["slug_limpo"]).single().execute()
+                aid = r.data["id"]
+                print(f"[+] NOVO (id {aid})")
+
+            # processa os eps
+            sem = asyncio.Semaphore(4)
+            async def embed(ep):
+                async with sem:
+                    acao, eid = processar_ep(aid, ep["numero"], ep, min_alive)
+                    if acao == "skip":
+                        print(f"    skip ep{ep['numero']}")
+                        return
+                    embed_url, tipo = await capturar_embed(ctx, ep["url"])
+                    if not embed_url:
+                        print(f"    SEM ep{ep['numero']}")
+                        return
+                    ep["embed_url"] = embed_url
+                    ep["embed_type"] = tipo
+                    gravar_ep(aid, ep["numero"], ep, eid, acao)
+                    print(f"    {acao} ep{ep['numero']}")
+            await asyncio.gather(*(embed(ep) for ep in info["episodios"]))
+
+        except Exception as e:
+            print(f"[!] erro: {e}")
+        finally:
+            await pg.close()
+        await b.close()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--batch", type=int, default=50)
@@ -583,7 +664,14 @@ def main():
                     help="nao adiciona source ao anime existente (so processa eps)")
     ap.add_argument("--min-alive", type=int, default=2,
                     help="so adiciona nova source se o ep tem menos que N alive (default 2)")
+    ap.add_argument("--url", default=None,
+                    help="URL de um anime especifico (ex: https://animesdigital.org/anime/s/solo-leveling)")
     args = ap.parse_args()
+
+    if args.url:
+        asyncio.run(pipeline_url(args.url, min_alive=args.min_alive))
+        return
+
     asyncio.run(pipeline(
         batch=args.batch, pages_limit=args.pages_limit,
         workers_detail=args.workers_detail, workers_embed=args.workers_embed,
