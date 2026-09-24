@@ -213,7 +213,7 @@ async def pipeline(base_url, batch=100, pages_limit=0,
             log('[1] modo --from-db: lendo animes pendentes do Supabase (sem listagem)')
             animes = await asyncio.to_thread(animes_pendentes_no_supabase, shard, of)
             log(f'[1] {len(animes)} animes pendentes (shard {shard}/{of})')
-        elif re.search(r'/anime/[^/]+/?$', base_url):
+        elif re.search(r'/anime/[a-z0-9]/[^/]+/?$', base_url, re.I):
             log('[1] URL de anime especifico, pulando listagem')
             animes = [{'url': base_url, 'capa': None}]
         else:
