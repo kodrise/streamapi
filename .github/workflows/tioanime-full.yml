@@ -1,0 +1,23 @@
+name: tioanime-full
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12', cache: pip }
+      - run: |
+          pip install -r requirements-scraper.txt
+          playwright install chromium
+          playwright install-deps chromium
+      - run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
+      - run: python tioanime_supa.py --pages-limit 0 --batch 20
+      - if: always()
+        run: rm -f .env
