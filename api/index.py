@@ -337,3 +337,108 @@ def embed_raw(identificador: str, numero: int):
         },
         headers=CACHE_HEADERS,
     )
+
+# ============================================================
+# MIDIAS (filmes e series TMDB)
+# ============================================================
+
+@app.get("/api/midias")
+def listar_midias(
+    tipo: Optional[str] = None,
+    genero: Optional[str] = None,
+    ano_min: Optional[int] = None,
+    ano_max: Optional[int] = None,
+    busca: Optional[str] = None,
+    ordem: str = Query("atualizado_em", pattern="^(id|titulo|ano|nota|atualizado_em|total_episodios)$"),
+    desc: bool = True,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=100),
+):
+    q = SB.table("midias").select(
+        "id,tmdb_id,tipo,titulo,titulo_original,sinopse,capa,backdrop,ano,nota,generos,"
+        "status,total_temporadas,total_episodios,provider",
+        count="exact",
+    ).not_.is_("capa", "null")
+
+    if tipo:    q = q.eq("tipo", tipo)
+    if genero:  q = q.contains("generos", [genero])
+    if ano_min: q = q.gte("ano", ano_min)
+    if ano_max: q = q.lte("ano", ano_max)
+    if busca:   q = q.ilike("titulo", f"%{busca}%")
+
+    ini = (page - 1) * per_page
+    q = q.order(ordem, desc=desc).range(ini, ini + per_page - 1)
+    r = q.execute()
+    return {"total": r.count or 0, "page": page, "per_page": per_page, "midias": r.data or []}
+
+
+@app.get("/api/midias/{tmdb_id}")
+def detalhe_midia(tmdb_id: int, tipo: Optional[str] = None):
+    q = SB.table("midias").select("*").eq("tmdb_id", tmdb_id)
+    if tipo:
+        q = q.eq("tipo", tipo)
+    r = q.limit(1).execute()
+    if not r.data:
+        raise HTTPException(404, "midia nao encontrada")
+
+    midia = r.data[0]
+
+    if midia["tipo"] == "serie":
+        eps = SB.table("midias_episodios").select(
+            "id,temporada,episodio,titulo,sinopse,thumb,duracao,embed_url,provider"
+        ).eq("midia_id", midia["id"]).order("temporada").order("episodio").execute().data or []
+        midia["episodios"] = eps
+    else:
+        midia["episodios"] = []
+
+    return JSONResponse(content=midia, headers=CACHE_HEADERS)
+
+
+@app.get("/api/midias/{tmdb_id}/stream")
+@app.get("/api/midias/{tmdb_id}/stream/{temporada}/{episodio}")
+def stream_midia(tmdb_id: int, temporada: Optional[int] = None, episodio: Optional[int] = None):
+    r = SB.table("midias").select("id,tipo,tmdb_id").eq("tmdb_id", tmdb_id).limit(1).execute()
+    if not r.data:
+        raise HTTPException(404, "midia nao encontrada")
+    midia = r.data[0]
+
+    if midia["tipo"] == "filme":
+        return RedirectResponse(f"https://vidlink.pro/movie/{tmdb_id}", status_code=302)
+
+    if temporada is None or episodio is None:
+        raise HTTPException(400, "temporada e episodio obrigatorios para series")
+
+    ep = SB.table("midias_episodios").select("id")\
+        .eq("midia_id", midia["id"]).eq("temporada", temporada).eq("episodio", episodio)\
+        .limit(1).execute()
+    if not ep.data:
+        raise HTTPException(404, "episodio nao encontrado")
+
+    srcs = SB.table("midias_sources").select("source,embed_url,status")\
+        .eq("episodio_id", ep.data[0]["id"]).execute().data or []
+    if not srcs:
+        return RedirectResponse(
+            f"https://vidlink.pro/tv/{tmdb_id}/{temporada}/{episodio}", status_code=302
+        )
+
+    srcs.sort(key=lambda x: 0 if x.get("status") == "alive" else 1)
+    return RedirectResponse(srcs[0]["embed_url"], status_code=302)
+
+
+@app.get("/api/generos-midia")
+def generos_midia():
+    from collections import Counter
+    counter = Counter()
+    offset = 0
+    while True:
+        r = SB.table("midias").select("generos").range(offset, offset + 999).execute().data or []
+        if not r:
+            break
+        for m in r:
+            for g in m.get("generos") or []:
+                counter[g] += 1
+        if len(r) < 1000:
+            break
+        offset += 1000
+    return [{"nome": k, "total": v} for k, v in counter.most_common()]
+
