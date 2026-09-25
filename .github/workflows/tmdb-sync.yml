@@ -1,0 +1,27 @@
+name: tmdb-sync
+on:
+  schedule:
+    - cron: '0 4 * * *'   # diário 4h UTC
+  workflow_dispatch:
+    inputs:
+      pages:
+        description: 'Páginas a puxar por tipo (padrão 30)'
+        default: '30'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12', cache: pip }
+      - run: |
+          pip install -r requirements-scraper.txt curl_cffi
+      - run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
+          echo "TMDB_TOKEN=${{ secrets.TMDB_TOKEN }}" >> .env
+      - run: python tmdb_sync.py --tipo ambos --pages ${{ github.event.inputs.pages || 30 }}
+      - if: always()
+        run: rm -f .env
