@@ -9,7 +9,12 @@ from supabase import create_client
 load_dotenv()
 SB = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_SERVICE_ROLE_KEY"])
 
-TMDB_TOKEN = os.environ.get("TMDB_TOKEN", "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI4NTVlNjFlNmY0MDU0MGEzYzBhODQxYWY5MDZiZmUxMCIsIm5iZiI6MTc5MDM0MjA3OC4zOTIsInN1YiI6IjZhYjY3M2JlNjQ5YzU3YzFlZTQ4ZWQxYSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.FAugoBd5Shz_Dz0yoW7C5m0PZBou6Vv9g3-s7312_4Q")
+TMDB_TOKEN = os.environ.get("TMDB_TOKEN", "")
+
+if not TMDB_TOKEN:
+    raise RuntimeError(
+        "TMDB_TOKEN nao definido. Adiciona ao .env local ou aos secrets do GitHub."
+    )
 BASE = "https://api.themoviedb.org/3"
 IMG = "https://image.tmdb.org/t/p/w500"
 IMG_ORIG = "https://image.tmdb.org/t/p/w780"
