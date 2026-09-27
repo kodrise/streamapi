@@ -21,23 +21,35 @@ IMG_ORIG = "https://image.tmdb.org/t/p/w780"
 H = {"Authorization": f"Bearer {TMDB_TOKEN}", "Accept": "application/json"}
 
 
-def tmdb(path, params=None, tentativas=3):
+def tmdb(path, params=None, tentativas=5):
+    """GET no TMDB com retry agressivo. Connection: close evita o
+    RemoteProtocolError por HTTP/2 stream limit."""
     for t in range(tentativas):
         try:
+            headers_local = {**H, "Connection": "close"}
             r = requests.get(
-                BASE + path, headers=H, params=params or {},
-                impersonate="chrome131", timeout=30, http2=False,
+                BASE + path,
+                headers=headers_local,
+                params=params or {},
+                impersonate="chrome131",
+                timeout=30,
             )
             if r.status_code == 200:
                 return r.json()
             if r.status_code == 429:
-                time.sleep(2 * (t + 1)); continue
+                time.sleep(2 * (t + 1))
+                continue
+            print(f"    [!] tmdb HTTP {r.status_code} em {path}")
             return None
         except Exception as e:
+            err = str(e)
+            if "RemoteProtocol" in err or "ConnectionTerminated" in err:
+                time.sleep(3 * (t + 1))
+            else:
+                time.sleep(1 * (t + 1))
             if t == tentativas - 1:
-                print(f"    [!] tmdb falhou: {str(e)[:80]}")
+                print(f"    [!] tmdb falhou ({tentativas}x): {err[:80]}")
                 return None
-            time.sleep(1.5 * (t + 1))
     return None
 
 
