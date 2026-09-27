@@ -16,11 +16,24 @@ IMG_ORIG = "https://image.tmdb.org/t/p/w780"
 H = {"Authorization": f"Bearer {TMDB_TOKEN}", "Accept": "application/json"}
 
 
-def tmdb(path, params=None):
-    r = requests.get(BASE + path, headers=H, params=params or {}, impersonate="chrome131", timeout=20)
-    if r.status_code != 200:
-        return None
-    return r.json()
+def tmdb(path, params=None, tentativas=3):
+    for t in range(tentativas):
+        try:
+            r = requests.get(
+                BASE + path, headers=H, params=params or {},
+                impersonate="chrome131", timeout=30, http2=False,
+            )
+            if r.status_code == 200:
+                return r.json()
+            if r.status_code == 429:
+                time.sleep(2 * (t + 1)); continue
+            return None
+        except Exception as e:
+            if t == tentativas - 1:
+                print(f"    [!] tmdb falhou: {str(e)[:80]}")
+                return None
+            time.sleep(1.5 * (t + 1))
+    return None
 
 
 def montar_embed(tmdb_id, tipo, temporada=None, episodio=None):
