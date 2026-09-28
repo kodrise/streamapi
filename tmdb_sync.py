@@ -4,6 +4,16 @@
 import os, argparse, time
 from curl_cffi import requests
 from dotenv import load_dotenv
+
+# --- monkey-patch httpx para HTTP/1.1 (evita stream limit HTTP/2 no Supabase) ---
+import httpx
+_orig_client_init = httpx.Client.__init__
+def _http1_init(self, *args, **kwargs):
+    kwargs["http2"] = False
+    _orig_client_init(self, *args, **kwargs)
+httpx.Client.__init__ = _http1_init
+# ---------------------------------------------------------------------------
+
 from supabase import create_client
 
 load_dotenv()
