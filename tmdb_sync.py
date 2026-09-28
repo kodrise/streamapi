@@ -30,6 +30,23 @@ IMG = "https://image.tmdb.org/t/p/w500"
 IMG_ORIG = "https://image.tmdb.org/t/p/w780"
 H = {"Authorization": f"Bearer {TMDB_TOKEN}", "Accept": "application/json"}
 
+# Múltiplas listagens por tipo (cobre populares + clássicos + actual + PT-BR)
+LISTAGENS = {
+    "tv": [
+        ("/discover/tv", {"sort_by": "popularity.desc", "without_genres": "10767,10763,10764"}),
+        ("/tv/top_rated", {}),
+        ("/tv/on_the_air", {}),
+        ("/discover/tv", {"with_original_language": "pt", "sort_by": "popularity.desc"}),
+    ],
+    "movie": [
+        ("/movie/popular", {}),
+        ("/movie/top_rated", {}),
+        ("/movie/now_playing", {}),
+        ("/movie/upcoming", {}),
+        ("/discover/movie", {"with_original_language": "pt", "sort_by": "popularity.desc"}),
+    ],
+}
+
 
 def tmdb(path, params=None, tentativas=5):
     """GET no TMDB com retry agressivo. Connection: close evita o
@@ -110,36 +127,34 @@ def tmdb_id_path(tid):
     return f"/tv/{tid}"
 
 
-def sincronizar(tipo="tv", pages=1, max_items=0):
+def sincronizar(tipo="tv", pages=20, max_items=0):
+    """Percorre todas as listagens do tipo, grava na tabela midias, e
+    (para séries) processa eps após a listagem completa."""
     tipo_norm = "serie" if tipo == "tv" else "filme"
-    total = 0
-    for page in range(1, pages + 1):
-        print(f"[*] {tipo} populares — página {page}")
-        if tipo == "tv":
-            params = {
-                "language": "pt-BR",
-                "page": page,
-                "sort_by": "popularity.desc",
-                "without_genres": "10767,10763,10764",
-            }
-            d = tmdb("/discover/tv", params)
-        else:
-            params = {"language": "pt-BR", "page": page}
-            d = tmdb("/movie/popular", params)
-        if not d:
-            continue
-        for item in d.get("results", []):
-            if max_items and total >= max_items:
-                break
-            mid = gravar_midia(item, tipo_norm)
-            if mid:
-                total += 1
-        print(f"    total acumulado: {total}")
-        time.sleep(0.3)
-        if max_items and total >= max_items:
-            break
+    listagens = LISTAGENS.get(tipo, [])
+    total_geral = 0
 
-    # séries: puxar detalhes + eps
+    for endpoint, params_base in listagens:
+        print(f"\n[*] {endpoint} {params_base.get('with_original_language') or params_base.get('sort_by') or ''}")
+        for page in range(1, pages + 1):
+            params = {"language": "pt-BR", "page": page, **params_base}
+            d = tmdb(endpoint, params)
+            if not d:
+                break
+            results = d.get("results", [])
+            if not results:
+                break
+            for item in results:
+                mid = gravar_midia(item, tipo_norm)
+                if mid:
+                    total_geral += 1
+            if page % 5 == 0:
+                print(f"    pag {page}: total acumulado {total_geral}")
+            time.sleep(0.1)
+
+    print(f"\n[*] total {tipo_norm}: {total_geral}")
+
+    # séries: puxar eps após todas as listagens
     if tipo == "tv":
         print(f"\n[*] puxando detalhes e eps das séries...")
         rows = SB.table("midias").select("id,tmdb_id,titulo").eq("tipo", "serie").execute().data or []
@@ -149,21 +164,18 @@ def sincronizar(tipo="tv", pages=1, max_items=0):
             detalhes = tmdb(f"/tv/{r['tmdb_id']}", {"language": "pt-BR"})
             if not detalhes:
                 continue
-            n_seasons = detalhes.get("number_of_seasons", 0)
             n_eps = detalhes.get("number_of_episodes", 0)
-
-            # skip séries longas (novelas, talk shows residuais)
-            if n_eps > 150:
-                print(f"    skip {r['titulo'][:45]:45} ({n_eps} eps — demasiado longo)")
+            max_eps_season = max((s.get("episode_count", 0) for s in detalhes.get("seasons", [])), default=0)
+            if max_eps_season > 100:
+                print(f"    skip {r['titulo'][:45]:45} (temporada com {max_eps_season} eps)")
                 continue
             SB.table("midias").update({
-                "total_temporadas": n_seasons,
+                "total_temporadas": detalhes.get("number_of_seasons", 0),
                 "total_episodios": n_eps,
                 "status": detalhes.get("status"),
                 "generos": [g["name"] for g in detalhes.get("genres", [])],
             }).eq("id", r["id"]).execute()
 
-            # eps de cada temporada
             for s in detalhes.get("seasons", []):
                 snum = s.get("season_number", 0)
                 if snum == 0:
@@ -174,7 +186,6 @@ def sincronizar(tipo="tv", pages=1, max_items=0):
                 for ep in eps_d.get("episodes", []):
                     enum = ep.get("episode_number")
                     embed_url = montar_embed(r["tmdb_id"], "serie", snum, enum)
-                    # upsert com returning do id (evita SELECT intermédio)
                     res = SB.table("midias_episodios").upsert({
                         "midia_id": r["id"],
                         "temporada": snum,
@@ -186,7 +197,6 @@ def sincronizar(tipo="tv", pages=1, max_items=0):
                         "embed_url": embed_url,
                         "provider": "vidlink",
                     }, on_conflict="midia_id,temporada,episodio").execute()
-
                     eid = res.data[0]["id"] if res.data else None
                     if eid:
                         SB.table("midias_sources").upsert({
@@ -198,13 +208,13 @@ def sincronizar(tipo="tv", pages=1, max_items=0):
                             "status": "unknown",
                         }, on_conflict="episodio_id,source").execute()
                 print(f"    {r['titulo'][:40]:40} S{snum} ({len(eps_d.get('episodes', []))} eps)")
-            time.sleep(0.3)
+            time.sleep(0.2)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tipo", choices=["tv", "movie", "ambos"], default="ambos")
-    ap.add_argument("--pages", type=int, default=2)
+    ap.add_argument("--pages", type=int, default=20, help="páginas por listagem")
     ap.add_argument("--max", type=int, default=0, help="máx itens por tipo (0 = sem limite)")
     args = ap.parse_args()
 
