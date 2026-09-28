@@ -1,27 +1,51 @@
 name: tmdb-sync
+
 on:
   schedule:
-    - cron: '0 4 * * *'   # diário 4h UTC
+    - cron: '0 4 * * *'
   workflow_dispatch:
     inputs:
       pages:
-        description: 'Páginas a puxar por tipo (padrão 30)'
-        default: '30'
+        description: 'Páginas por tipo (padrão 50)'
+        default: '50'
 
 jobs:
-  sync:
+  sync-tv:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.12', cache: pip }
-      - run: |
+      - name: deps
+        run: |
           pip install -r requirements-scraper.txt curl_cffi
-      - run: |
+      - name: .env
+        run: |
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
           echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
           echo "TMDB_TOKEN=${{ secrets.TMDB_TOKEN }}" >> .env
-      - run: python tmdb_sync.py --tipo ambos --pages ${{ github.event.inputs.pages || 30 }}
+      - name: sync series
+        run: python tmdb_sync.py --tipo tv --pages ${{ github.event.inputs.pages || 50 }}
+      - if: always()
+        run: rm -f .env
+
+  sync-movie:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12', cache: pip }
+      - name: deps
+        run: |
+          pip install -r requirements-scraper.txt curl_cffi
+      - name: .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
+          echo "SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" >> .env
+          echo "TMDB_TOKEN=${{ secrets.TMDB_TOKEN }}" >> .env
+      - name: sync filmes
+        run: python tmdb_sync.py --tipo movie --pages ${{ github.event.inputs.pages || 50 }}
       - if: always()
         run: rm -f .env
